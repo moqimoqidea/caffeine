@@ -20,7 +20,8 @@ import java.io.Serializable;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
@@ -35,14 +36,17 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
  *
  * @author mike nonemacher
  */
+@NullUnmarked
 @GwtCompatible(emulated = true)
 public class TestingCacheLoaders {
+
+  private TestingCacheLoaders() {}
 
   /**
    * Returns a {@link CacheLoader} that implements a naive {@link CacheLoader#loadAll}, delegating
    * {@link CacheLoader#load} calls to {@code loader}.
    */
-  public static <K, V> CacheLoader<K, V> bulkLoader(final CacheLoader<K, V> loader) {
+  public static <K, V> CacheLoader<K, V> bulkLoader(CacheLoader<K, V> loader) {
     checkNotNull(loader);
     return new CacheLoader<K, V>() {
       @Override
@@ -78,7 +82,7 @@ public class TestingCacheLoaders {
   /**
    * Returns a {@link CacheLoader} that throws the given error for every request.
    */
-  static <K, V> CacheLoader<K, V> errorLoader(final Error e) {
+  static <K, V> CacheLoader<K, V> errorLoader(Error e) {
     checkNotNull(e);
     return new CacheLoader<K, V>() {
       @Override
@@ -91,7 +95,7 @@ public class TestingCacheLoaders {
   /**
    * Returns a {@link CacheLoader} that throws the given exception for every request.
    */
-  static <K, V> CacheLoader<K, V> exceptionLoader(final Exception e) {
+  static <K, V> CacheLoader<K, V> exceptionLoader(Exception e) {
     checkNotNull(e);
     return new CacheLoader<K, V>() {
       @Override

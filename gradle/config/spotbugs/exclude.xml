@@ -8,11 +8,13 @@
       ACEM_ABSTRACT_CLASS_EMPTY_METHODS,
       AI_ANNOTATION_ISSUES_NEEDS_NULLABLE,
       AOM_ABSTRACT_OVERRIDDEN_METHOD,
+      BAS_BLOATED_ASSIGNMENT_SCOPE,
       BL_BURYING_LOGIC,
       CE_CLASS_ENVY,
       CFS_CONFUSING_FUNCTION_SEMANTICS,
       CLI_CONSTANT_LIST_INDEX,
       CNC_COLLECTION_NAMING_CONFUSION,
+      CT_CONSTRUCTOR_THROW,
       DMI_RANDOM_USED_ONLY_ONCE,
       EI_EXPOSE_REP, EI_EXPOSE_REP2,
       ENMI_EQUALS_ON_ENUM,
@@ -39,6 +41,8 @@
       OI_OPTIONAL_ISSUES_CHECKING_REFERENCE,
       OPM_OVERLY_PERMISSIVE_METHOD,
       PCOA_PARTIALLY_CONSTRUCTED_OBJECT_ACCESS,
+      PI_DO_NOT_REUSE_PUBLIC_IDENTIFIERS_CLASS_NAMES,
+      PI_DO_NOT_REUSE_PUBLIC_IDENTIFIERS_FIELD_NAMES,
       PIS_POSSIBLE_INCOMPLETE_SERIALIZATION,
       PL_PARALLEL_LISTS,
       PMB_INSTANCE_BASED_THREAD_LOCAL,
@@ -54,6 +58,8 @@
       THROWS_METHOD_THROWS_RUNTIMEEXCEPTION,
       THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION,
       URV_UNRELATED_RETURN_VALUES,
+      UUF_UNUSED_PUBLIC_OR_PROTECTED_FIELD,
+      UWF_UNWRITTEN_FIELD,
       USBR_UNNECESSARY_STORE_BEFORE_RETURN,
       UTWR_USE_TRY_WITH_RESOURCES,
       UVA_USE_VAR_ARGS,
@@ -166,14 +172,24 @@
     <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
   </Match>
   <Match>
+    <Class name="com.github.benmanes.caffeine.cache.LocalAsyncCache$AsyncBulkCompleter"/>
+    <Method name="apply"/>
+    <Bug pattern="ITC_INHERITANCE_TYPE_CHECKING"/>
+  </Match>
+  <Match>
     <Class name="com.github.benmanes.caffeine.cache.LocalAsyncCache$AsyncBulkCompleter$NullMapCompletionException"/>
     <Method name="&lt;init&gt;"/>
     <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
   </Match>
   <Match>
     <Class name="com.github.benmanes.caffeine.cache.LocalAsyncCache$AsyncBulkCompleter"/>
-    <Method name="lambda$fillProxies$0"/>
+    <Method name="fillProxies"/>
     <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.LocalCacheFactory"/>
+    <Method name="newInstance"/>
+    <Bug pattern="THROWS_METHOD_THROWS_CLAUSE_THROWABLE"/>
   </Match>
   <Match>
     <Class name="com.github.benmanes.caffeine.cache.SerializationProxy"/>
@@ -216,8 +232,25 @@
   </Match>
   <Match>
     <Or>
+      <Class name="~.*FD.*"/>
+      <Class name="~.*FS.*"/>
+      <Class name="~.*FW.*"/>
+      <Class name="~.*PD.*"/>
+      <Class name="~.*PS.*"/>
+      <Class name="~.*PW.*"/>
+    </Or>
+    <Bug pattern="NP_UNWRITTEN_FIELD"/>
+  </Match>
+  <Match>
+    <Or>
       <Class name="~.*Mpsc.*"/>
       <Class name="~.*Header.*"/>
+      <Class name="~.*FD.*"/>
+      <Class name="~.*FS.*"/>
+      <Class name="~.*FW.*"/>
+      <Class name="~.*PD.*"/>
+      <Class name="~.*PS.*"/>
+      <Class name="~.*PW.*"/>
     </Or>
     <Bug pattern="UUF_UNUSED_FIELD"/>
   </Match>
@@ -229,6 +262,11 @@
   <Match>
     <Class name="com.github.benmanes.caffeine.cache.LocalCacheFactoryGenerator"/>
     <Method name="reformat"/>
+    <Bug pattern="DM_DEFAULT_ENCODING"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.LocalCacheFactoryGenerator"/>
+    <Method name="reformat"/>
     <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE"/>
   </Match>
   <Match>
@@ -239,18 +277,34 @@
   <Match>
     <Class name="com.github.benmanes.caffeine.cache.NodeFactoryGenerator"/>
     <Method name="reformat"/>
+    <Bug pattern="DM_DEFAULT_ENCODING"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.NodeFactoryGenerator"/>
+    <Method name="reformat"/>
     <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE"/>
   </Match>
   <Match>
-    <Class name="~com.github.benmanes.caffeine.*Benchmark.*"/>
+    <Class name="com.github.benmanes.caffeine.cache.local.AddSubtype"/>
+    <Method name="getJavaDoc"/>
+    <Bug pattern="POTENTIAL_XML_INJECTION"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.node.AddSubtype"/>
+    <Method name="getJavaDoc"/>
+    <Bug pattern="POTENTIAL_XML_INJECTION"/>
+  </Match>
+  <Match>
+    <OR>
+      <Class name="~com.github.benmanes.caffeine.*Profiler"/>
+      <Class name="~com.github.benmanes.caffeine.*Benchmark.*"/>
+    </OR>
     <Bug pattern="PREDICTABLE_RANDOM"/>
   </Match>
   <Match>
-    <Class name="~com.github.benmanes.caffeine.cache.impl.ConcurrentHashMapV7.*"/>
-  </Match>
-  <Match>
-    <Class name="com.github.benmanes.caffeine.profiler.CacheProfiler"/>
-    <Bug pattern="PREDICTABLE_RANDOM"/>
+    <Class name="com.github.benmanes.caffeine.cache.sketch.CountMinSketch"/>
+    <Method name="reset"/>
+    <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
   </Match>
   <Match>
     <Class name="com.github.benmanes.caffeine.DelegationBenchmark$DelegateMap"/>
@@ -259,7 +313,9 @@
   </Match>
   <Match>
     <Class name="~com.github.benmanes.caffeine.*Benchmark"/>
-    <Bug pattern="FORMAT_STRING_MANIPULATION, UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
+    <Bug pattern="
+      FORMAT_STRING_MANIPULATION,
+      UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
   </Match>
 
   <!-- Guava -->
@@ -286,6 +342,11 @@
     <Class name="com.github.benmanes.caffeine.jcache.spi.CaffeineCachingProvider"/>
     <Method name="activate"/>
     <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.jcache.CacheFactory$Builder"/>
+    <Method name="newLoadingCacheProxy"/>
+    <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
   </Match>
   <Match>
     <Class name="com.github.benmanes.caffeine.jcache.CacheProxy"/>
@@ -370,8 +431,11 @@
   <!-- Simulator -->
   <Match>
     <Package name="~com.github.benmanes.caffeine.cache.simulator.*"/>
-    <Bug pattern="IMPROPER_UNICODE, PATH_TRAVERSAL_IN,
-      PREDICTABLE_RANDOM, UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
+    <Bug pattern="
+      IMPROPER_UNICODE,
+      PATH_TRAVERSAL_IN,
+      PREDICTABLE_RANDOM,
+      UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
   </Match>
   <Match>
     <Class name="com.github.benmanes.caffeine.cache.simulator.Simulator"/>
@@ -399,6 +463,11 @@
     <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD"/>
   </Match>
   <Match>
+    <Class name="com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent"/>
+    <Method name="equals"/>
+    <Bug pattern="FE_FLOATING_POINT_EQUALITY"/>
+  </Match>
+  <Match>
     <Class name="com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent$PenaltiesAccessEvent"/>
     <Bug pattern="EQ_DOESNT_OVERRIDE_EQUALS"/>
   </Match>
@@ -424,5 +493,216 @@
     <Class name="com.github.benmanes.caffeine.cache.simulator.report.TextReporter"/>
     <Method name="print"/>
     <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+  </Match>
+
+  <!-- Tests -->
+  <Match>
+    <Or>
+      <Package name="~com\.github\.benmanes\.caffeine\.jsr166.*"/>
+      <Package name="~com\.github\.benmanes\.caffeine\.eclipse.*"/>
+      <Package name="~com\.github\.benmanes\.caffeine\.openjdk.*"/>
+      <Package name="~com\.github\.benmanes\.caffeine\.guava\.compatibility.*"/>
+      <Class name="~com\.github\.benmanes\.caffeine\.cache\.QueueSanityTest.*"/>
+    </Or>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="~.*Test.*"/>
+      <Class name="~.*Subject"/>
+      <Class name="~.*\.testing.*"/>
+      <Class name="com.github.benmanes.caffeine.cache.Reset"/>
+      <Class name="com.github.benmanes.caffeine.cache.Stresser"/>
+    </Or>
+    <Bug pattern="
+      EC_NULL_ARG,
+      PREDICTABLE_RANDOM,
+      RV_RETURN_VALUE_IGNORED,
+      PDP_POORLY_DEFINED_PARAMETER,
+      HE_HASHCODE_USE_OBJECT_EQUALS,
+      ITC_INHERITANCE_TYPE_CHECKING,
+      SIC_INNER_SHOULD_BE_STATIC_ANON,
+      THROWS_METHOD_THROWS_CLAUSE_THROWABLE,
+      NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE,
+      UTAO_TESTNG_ASSERTION_ODDITIES_NO_ASSERT,
+      UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.simulator.admission.bloom.MembershipTest"/>
+    <Bug pattern="
+      UC_USELESS_OBJECT,
+      CRLF_INJECTION_LOGS,
+      UPM_UNCALLED_PRIVATE_METHOD,
+      WOC_WRITE_ONLY_COLLECTION_LOCAL"/>
+  </Match>
+  <Match>
+    <Or>
+      <Package name="com.github.benmanes.caffeine.testing"/>
+      <Package name="com.github.benmanes.caffeine.cache.testing"/>
+      <Class name="com.github.benmanes.caffeine.cache.LocalCacheSubject"/>
+      <Class name="com.github.benmanes.caffeine.cache.ReserializableSubject"/>
+    </Or>
+    <Bug pattern="BC_UNCONFIRMED_CAST_OF_RETURN_VALUE"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.Reset"/>
+    <Method name="resetThreadLocalRandom"/>
+    <Bug pattern="
+      RFI_SET_ACCESSIBLE,
+      DP_DO_INSIDE_DO_PRIVILEGED"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.testing.Threads"/>
+    <Bug pattern="CRLF_INJECTION_LOGS"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.issues.Issue30Test$Loader"/>
+    <Bug pattern="DLS_DEAD_LOCAL_STORE"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.InternerTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.ReferenceTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.BoundedLocalCacheTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.issues.Issue30Test$Loader"/>
+    </Or>
+    <Bug pattern="DLS_DEAD_LOCAL_STORE_OF_NULL"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.CacheTest"/>
+    <Bug pattern="DP_DO_INSIDE_DO_PRIVILEGED"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.testing.RemovalNotification"/>
+      <Class name="com.github.benmanes.caffeine.cache.testing.GuavaCacheFromContext$GuavaCacheEntry"/>
+    </Or>
+    <Bug pattern="EQ_DOESNT_OVERRIDE_EQUALS"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.issues.Issue30Test"/>
+      <Class name="com.github.benmanes.caffeine.cache.issues.Issue412Test"/>
+      <Class name="com.github.benmanes.caffeine.testing.ConcurrentTestHarness"/>
+    </Or>
+    <Bug pattern="HES_EXECUTOR_NEVER_SHUTDOWN"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.issues.Issue412Test"/>
+    <Bug pattern="HES_EXECUTOR_OVERWRITTEN_WITHOUT_SHUTDOWN"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.BoundedLocalCacheTest"/>
+    <Bug pattern="MDM_LOCK_ISLOCKED"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.BoundedBufferTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.StripedBufferTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.buffer.BufferTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.issues.Issue30Test"/>
+    </Or>
+    <Bug pattern="MDM_THREAD_YIELD"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.AsMapTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.ReferenceTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.AsyncAsMapTest"/>
+    </Or>
+    <Bug pattern="MUI_USE_CONTAINSKEY"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.testing.MapSubject"/>
+    <Bug pattern="NM_SAME_SIMPLE_NAME_AS_SUPERCLASS"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.jcache.issues.Issue1065Test$Listener"/>
+    <Bug pattern="NFF_NON_FUNCTIONAL_FIELD"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.AsyncCacheTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.AsyncLoadingCacheTest"/>
+    </Or>
+    <Bug pattern="NP_LOAD_OF_KNOWN_NULL_VALUE"/>
+  </Match>
+  <Match>
+    <Class name="~com\.github\.benmanes\.caffeine\.cache\.testing\.GuavaCacheFromContext.*"/>
+    <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.MultiThreadedTest"/>
+    <Bug pattern="NPMC_NON_PRODUCTIVE_METHOD_CALL"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.AsMapTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.ReferenceTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.AsyncAsMapTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.BoundedLocalCacheTest"/>
+      <Class name="~com\.github\.benmanes\.caffeine\.cache\.testing\.GuavaCacheFromContext.*"/>
+    </Or>
+    <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
+  </Match>
+  <Match>
+    <Class name="~com\.github\.benmanes\.caffeine\.guava\.CaffeinatedGuavaTest\$.*"/>
+    <Bug pattern="NP_NONNULL_RETURN_VIOLATION"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.AsyncTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.CacheTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.BoundedBufferTest"/>
+      <Class name="com.github.benmanes.caffeine.guava.CaffeinatedGuavaTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.BoundedLocalCacheTest"/>
+    </Or>
+    <Bug pattern="RFI_SET_ACCESSIBLE"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.fuzz.CaffeineSpecFuzzer"/>
+    <Bug pattern="RV_RETURN_VALUE_IGNORED"/>
+  </Match>
+  <Match>
+    <Class name="~com\.github\.benmanes\.caffeine\.cache\.QueueSanityTest.*"/>
+    <Bug pattern="RV_RETURN_VALUE_IGNORED_BAD_PRACTICE"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.AsMapTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.AsyncAsMapTest"/>
+      <Class name="com.github.benmanes.caffeine.cache.MultiThreadedTest"/>
+    </Or>
+    <Bug pattern="RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.testing.CacheSpec$Loader$SeriazableAsyncCacheLoader"/>
+    <Bug pattern="SE_PRIVATE_READ_RESOLVE_NOT_INHERITED"/>
+  </Match>
+  <Match>
+    <Or>
+      <Class name="com.github.benmanes.caffeine.cache.MpscGrowableArrayQueueTest"/>
+      <Class name="com.github.benmanes.caffeine.jcache.copy.JavaSerializationCopierTest"/>
+    </Or>
+    <Bug pattern="SEC_SIDE_EFFECT_CONSTRUCTOR"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.jcache.CacheProxyTest"/>
+    <Bug pattern="SPP_NON_USEFUL_TOSTRING"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.testing.CacheProvider"/>
+    <Bug pattern="UCC_UNRELATED_COLLECTION_CONTENTS"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.issues.HashClashTest"/>
+    <Bug pattern="UP_UNUSED_PARAMETER"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.cache.issues.Issue859Test$TestRun"/>
+    <Bug pattern="URF_UNREAD_FIELD"/>
+  </Match>
+  <Match>
+    <Class name="com.github.benmanes.caffeine.guava.CaffeinatedGuavaTest"/>
+    <Bug pattern="UTAO_JUNIT_ASSERTION_ODDITIES_NO_ASSERT"/>
   </Match>
 </FindBugsFilter>

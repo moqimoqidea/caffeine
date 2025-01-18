@@ -17,6 +17,7 @@ package com.github.benmanes.caffeine.cache;
 
 import java.util.Random;
 
+import org.jspecify.annotations.Nullable;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Group;
 import org.openjdk.jmh.annotations.GroupThreads;
@@ -35,14 +36,15 @@ import site.ycsb.generator.ScrambledZipfianGenerator;
  * a 100% hit rate and a Zipf distribution of keys is used to mimic application usage patterns.
  * <p>
  * <pre>{@code
- *   ./gradlew jmh -PincludePattern=GetPutBenchmark
+ *   // JAVA_VERSION=?? for an alternative jdk
+ *   ./gradlew jmh -PincludePattern=GetPutBenchmark --rerun
  * }</pre>
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @State(Scope.Group)
 @SuppressWarnings({"CanonicalAnnotationSyntax", "LexicographicalAnnotationAttributeListing",
-  "PMD.JUnit4TestShouldUseAfterAnnotation", "PMD.MethodNamingConventions"})
+  "MemberName", "PMD.UnitTestShouldUseAfterAnnotation", "PMD.MethodNamingConventions"})
 public class GetPutBenchmark {
   private static final int SIZE = (2 << 14);
   private static final int MASK = SIZE - 1;
@@ -93,7 +95,7 @@ public class GetPutBenchmark {
   }
 
   @Benchmark @Group("read_only") @GroupThreads(8)
-  public Boolean readOnly(ThreadState threadState) {
+  public @Nullable Boolean readOnly(ThreadState threadState) {
     return cache.get(ints[threadState.index++ & MASK]);
   }
 
@@ -103,7 +105,7 @@ public class GetPutBenchmark {
   }
 
   @Benchmark @Group("readwrite") @GroupThreads(6)
-  public Boolean readwrite_get(ThreadState threadState) {
+  public @Nullable Boolean readwrite_get(ThreadState threadState) {
     return cache.get(ints[threadState.index++ & MASK]);
   }
 

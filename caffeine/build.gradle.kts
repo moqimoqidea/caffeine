@@ -2,13 +2,14 @@ import com.google.common.collect.Sets
 import de.thetaphi.forbiddenapis.gradle.CheckForbiddenApis
 import kotlin.math.max
 import net.ltgt.gradle.errorprone.errorprone
+import net.ltgt.gradle.nullaway.nullaway
 import org.gradle.api.tasks.PathSensitivity.RELATIVE
 import org.gradle.plugins.ide.eclipse.model.Classpath as EclipseClasspath
-import org.gradle.plugins.ide.eclipse.model.SourceFolder
+import org.gradle.plugins.ide.eclipse.model.Library
 
 plugins {
-  id("java-library-caffeine-conventions")
-  id("jmh-caffeine-conventions")
+  id("jmh.caffeine")
+  id("java-library.caffeine")
 }
 
 sourceSets {
@@ -21,34 +22,46 @@ sourceSets {
   }
 }
 
+val jar by tasks.existing(Jar::class)
 val compileJavaPoetJava by tasks.existing
-val javaAgent: Configuration by configurations.creating
-var javaPoetImplementation: Configuration = configurations["javaPoetImplementation"]
+val jammAgent: Configuration by configurations.creating
+val collections4Sources: Configuration by configurations.creating
+val javaPoetRuntimeOnly: Configuration = configurations["javaPoetRuntimeOnly"]
+val javaPoetImplementation: Configuration = configurations["javaPoetImplementation"]
 
 dependencies {
-  api(libs.checker.annotations)
+  api(libs.jspecify)
   api(libs.errorprone.annotations)
 
-  testImplementation(libs.joor)
   testImplementation(libs.ycsb) {
     isTransitive = false
   }
-  testImplementation(libs.picocli)
   testImplementation(libs.jctools)
-  testImplementation(libs.fastutil)
+  testImplementation(libs.mockito)
+  testImplementation(libs.picocli)
   testImplementation(libs.lincheck)
-  testImplementation(libs.guava.testlib)
   testImplementation(libs.commons.lang3)
+  testImplementation(libs.guava.testlib)
+  testImplementation(libs.bundles.jazzer)
+  testImplementation(libs.bundles.awaitility)
   testImplementation(libs.bundles.slf4j.test)
   testImplementation(libs.commons.collections4)
   testImplementation(libs.commons.collections4) {
-    artifact {
-      classifier = "tests"
-    }
+    artifact { classifier = "tests" }
   }
+  testImplementation(sourceSets["codeGen"].output)
+  testImplementation(libs.bundles.osgi.test.compile)
   testImplementation(libs.eclipse.collections.testutils)
 
-  javaAgent(libs.jamm)
+  testRuntimeOnly(libs.bundles.osgi.test.runtime)
+
+  collections4Sources(libs.commons.collections4) {
+    artifact { classifier = "test-sources" }
+  }
+
+  jammAgent(libs.jamm) {
+    isTransitive = false
+  }
 
   jmh(libs.jamm)
   jmh(libs.tcache)
@@ -60,18 +73,31 @@ dependencies {
   jmh(libs.expiring.map)
   jmh(libs.bundles.coherence)
   jmh(libs.concurrentlinkedhashmap)
-  jmh(sourceSets["codeGen"].output)
 
   javaPoetImplementation(libs.guava)
   javaPoetImplementation(libs.javapoet)
+  javaPoetImplementation(libs.jspecify)
   javaPoetImplementation(libs.commons.lang3)
-  javaPoetImplementation(libs.google.java.format)
+
+  javaPoetRuntimeOnly(libs.google.java.format)
 }
 
 val compileCodeGenJava by tasks.existing(JavaCompile::class) {
   classpath = sourceSets["main"].runtimeClasspath + sourceSets["main"].output
   dependsOn(tasks.compileJava)
-  options.isDebug = false
+
+  options.apply {
+    compilerArgs.remove("-parameters")
+    isDebug = false
+
+    errorprone {
+      disable("FieldMissingNullable")
+      disable("MissingOverride")
+      disable("MemberName")
+      disable("Varifier")
+      nullaway.disable()
+    }
+  }
 }
 
 compileJavaPoetJava.configure {
@@ -107,28 +133,47 @@ val generateNodes by tasks.registering(JavaExec::class) {
 tasks.named<JavaCompile>("compileJava").configure {
   dependsOn(generateLocalCaches, generateNodes)
   finalizedBy(compileCodeGenJava)
-  options.errorprone {
-    disable("CheckReturnValue")
+  options.apply {
+    compilerArgs.addAll(listOf("-Xlint:-auxiliaryclass", "-Xlint:-exports"))
+    errorprone {
+      disable("CheckReturnValue")
+    }
   }
 }
 
 tasks.named<JavaCompile>("compileTestJava").configure {
   dependsOn(tasks.jar, compileCodeGenJava)
+  options.apply {
+    compilerArgs.add("-Xlint:-auxiliaryclass")
+    errorprone {
+      disable("Varifier")
+      disable("Var")
+    }
+  }
 }
 
-tasks.test.configure {
-  exclude("com/github/benmanes/caffeine/cache/**")
-  dependsOn(junitTest)
+tasks.named<JavaCompile>("compileJmhJava").configure {
+  options.apply {
+    compilerArgs.add("-Xlint:-classfile")
+    errorprone {
+      disable("Varifier")
+      disable("Var")
+    }
+  }
+}
 
+val standaloneTest = tasks.register<Test>("standaloneTest") {
+  group = "Verification"
+  description = "Tests that are not part of an explicit suite"
+  exclude("com/github/benmanes/caffeine/cache/**")
   useTestNG {
     threadCount = max(6, Runtime.getRuntime().availableProcessors() - 1)
-    jvmArgs("-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled")
     excludeGroups("slow", "isolated", "lincheck")
     parallel = "methods"
   }
 }
 
-tasks.register<Test>("isolatedTest") {
+val isolatedTest = tasks.register<Test>("isolatedTest") {
   group = "Verification"
   description = "Tests that must be run in isolation"
   useTestNG {
@@ -137,16 +182,11 @@ tasks.register<Test>("isolatedTest") {
   }
 }
 
-tasks.register<Test>("lincheckTest") {
+val lincheckTest = tasks.register<Test>("lincheckTest") {
   group = "Verification"
   description = "Tests that assert linearizability"
-  enabled = (System.getenv("JDK_EA") != "true")
+  enabled = !isEarlyAccess()
   useTestNG {
-    jvmArgs(
-      "--add-opens", "java.base/jdk.internal.vm=ALL-UNNAMED",
-      "--add-opens", "java.base/jdk.internal.misc=ALL-UNNAMED",
-      "--add-opens", "java.base/jdk.internal.access=ALL-UNNAMED",
-      "--add-exports", "java.base/jdk.internal.util=ALL-UNNAMED")
     testLogging.events("started")
     includeGroups("lincheck")
     maxHeapSize = "3g"
@@ -154,17 +194,40 @@ tasks.register<Test>("lincheckTest") {
   }
 }
 
+val fuzzTest = tasks.register<Test>("fuzzTest") {
+  group = "Verification"
+  description = "Fuzz tests"
+  include("com/github/benmanes/caffeine/fuzz/**")
+  environment("JAZZER_FUZZ", "1")
+  useJUnitPlatform()
+  failFast = true
+  forkEvery = 1
+}
+
+val junitJupiterTest = tasks.register<Test>("junitJupiterTest") {
+  group = "Verification"
+  description = "JUnit Jupiter tests"
+  exclude("com/github/benmanes/caffeine/fuzz/**")
+  useJUnitPlatform()
+}
+
 val junitTest = tasks.register<Test>("junitTest") {
   group = "Verification"
-  description = "JUnit tests"
-
-  val jar by tasks.existing(Jar::class)
-  dependsOn(jar)
-
-  useJUnit()
-  failFast = true
-  maxHeapSize = "2g"
+  description = "JUnit classic tests"
+  maxParallelForks = Runtime.getRuntime().availableProcessors()
   systemProperty("caffeine.osgi.jar", relativePath(jar.get().archiveFile.get().asFile.path))
+  dependsOn(jar)
+  useJUnit()
+}
+
+tasks.test.configure {
+  exclude("com/github/benmanes/caffeine/**")
+  dependsOn(junitJupiterTest)
+  dependsOn(standaloneTest)
+  dependsOn(isolatedTest)
+  dependsOn(lincheckTest)
+  dependsOn(junitTest)
+  dependsOn(fuzzTest)
 }
 
 tasks.jar {
@@ -207,15 +270,15 @@ tasks.named<CheckForbiddenApis>("forbiddenApisMain").configure {
 
 tasks.named<CheckForbiddenApis>("forbiddenApisJavaPoet").configure {
   bundledSignatures.addAll(listOf("jdk-deprecated", "jdk-internal",
-    "jdk-non-portable", "jdk-reflection", "jdk-system-out", "jdk-unsafe"))
+    "jdk-non-portable", "jdk-reflection", "jdk-unsafe"))
 }
 
 tasks.named<CheckForbiddenApis>("forbiddenApisTest").configure {
-  bundledSignatures.add("jdk-deprecated-18")
+  bundledSignatures.addAll(listOf("jdk-deprecated-18", "jdk-unsafe"))
 }
 
 tasks.named<CheckForbiddenApis>("forbiddenApisJmh").configure {
-  bundledSignatures.addAll(listOf("jdk-deprecated-18", "jdk-reflection"))
+  bundledSignatures.addAll(listOf("jdk-deprecated-18", "jdk-reflection", "jdk-unsafe"))
 }
 
 tasks.register<JavaExec>("memoryOverhead") {
@@ -230,12 +293,13 @@ tasks.register<JavaExec>("memoryOverhead") {
     "--add-opens", "java.base/java.lang.ref=ALL-UNNAMED",
     "--add-opens", "java.base/java.lang=ALL-UNNAMED",
     "--add-opens", "java.base/java.util=ALL-UNNAMED",
-    "-javaagent:${configurations["javaAgent"].singleFile}")
+    "-javaagent:${jammAgent.asPath}")
 }
 
 tasks.register<Stress>("stress") {
   group = "Cache tests"
   description = "Executes a stress test"
+  mainClass = "com.github.benmanes.caffeine.cache.Stresser"
   classpath = sourceSets["codeGen"].runtimeClasspath + sourceSets["test"].runtimeClasspath
   outputs.upToDateWhen { false }
   dependsOn(tasks.compileTestJava)
@@ -258,15 +322,20 @@ for (scenario in Scenario.all()) {
         "implementation" to implementation)
 
       useTestNG {
-        if (slow == Slow.Disabled) {
-          threadCount = max(6, Runtime.getRuntime().availableProcessors() - 1)
-          jvmArgs("-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled")
-          excludeGroups("slow", "isolated", "lincheck")
-          parallel = "methods"
-        } else {
-          jvmArgs("-XX:+UseParallelGC")
-          includeGroups.add("slow")
+        if (slow == Slow.Enabled) {
           maxParallelForks = 2
+          includeGroups.add("slow")
+          if (java.toolchain.languageVersion.get().canCompileOrRun(23)) {
+            jvmArgs("-XX:+UseShenandoahGC")
+          } else {
+            jvmArgs("-XX:+UseParallelGC")
+          }
+        } else {
+          parallel = "methods"
+          excludeGroups("slow", "isolated", "lincheck")
+          jvmArgs("-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled",
+            "--add-opens", "java.base/java.lang=ALL-UNNAMED")
+          threadCount = max(6, Runtime.getRuntime().availableProcessors() - 1)
         }
       }
     }
@@ -276,39 +345,38 @@ for (scenario in Scenario.all()) {
   }
 }
 
+eclipse {
+  classpath {
+    plusConfigurations.add(configurations["javaPoetCompileClasspath"])
+
+    file.whenMerged {
+      if (this is EclipseClasspath) {
+        val regex = ".*collections4.*-tests.jar".toRegex()
+        entries.filterIsInstance<Library>()
+          .filter { regex.matches(it.path) }
+          .forEach { it.sourcePath = fileReference(file(collections4Sources.asPath)) }
+      }
+    }
+  }
+  synchronizationTasks(generateLocalCaches, generateNodes)
+}
+
 idea.module {
   scopes["PROVIDED"]!!["plus"]!!.add(configurations["javaPoetCompileClasspath"])
 }
 
-eclipse.classpath.file.whenMerged {
-  if (this is EclipseClasspath) {
-    entries.filterIsInstance<SourceFolder>()
-      .filter { it.output == "bin/codeGen" }
-      .forEach { it.output = "bin/main" }
-  }
-}
-
-plugins.withType<EclipsePlugin>().configureEach {
-  project.eclipse.classpath.plusConfigurations.add(configurations["javaPoetCompileClasspath"])
-}
-
-abstract class Stress @Inject constructor(@Internal val external: ExecOperations) : DefaultTask() {
-  @get:Input @get:Optional @get:Option(option = "workload", description = "The workload type")
-  abstract val operation: Property<String>
-  @get:InputFiles @get:Classpath
-  abstract val classpath: Property<FileCollection>
+abstract class Stress : JavaExec() {
+  @Input @Option(option = "workload", description = "The workload type")
+  var operation: String = ""
 
   @TaskAction
-  fun run() {
-    external.javaexec {
-      mainClass = "com.github.benmanes.caffeine.cache.Stresser"
-      classpath(this@Stress.classpath)
-      if (operation.isPresent) {
-        args("--workload", operation.get())
-      } else {
-        args("--help")
-      }
+  override fun exec() {
+    if (operation.isNotEmpty()) {
+      args("--workload", operation)
+    } else {
+      args("--help")
     }
+    super.exec()
   }
 }
 
@@ -337,7 +405,7 @@ data class Scenario(val implementation: Implementation,
   }
 
   fun testName(): String = buildString {
-    append(keys.name.lowercase() + "Keys")
+    append(keys.name.lowercase()).append("Keys")
     append("And").append(values).append("Values")
     if (stats == Stats.Enabled) {
       append("Stats")

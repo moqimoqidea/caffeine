@@ -23,16 +23,17 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbin
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Sets.toImmutableEnumSet;
 import static java.util.Locale.US;
+import static java.util.Objects.requireNonNull;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
+import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
-import com.github.benmanes.caffeine.cache.simulator.admission.TinyLfu;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
@@ -41,6 +42,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillC
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.climbing.HillClimber.QueueType;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
+import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -74,8 +76,9 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
   private double windowSize;
   private double protectedSize;
 
-  public HillClimberWindowTinyLfuPolicy(HillClimberType strategy, double percentMain,
-      HillClimberWindowTinyLfuSettings settings) {
+  @SuppressWarnings("Varifier")
+  public HillClimberWindowTinyLfuPolicy(HillClimberType strategy,
+      double percentMain, HillClimberWindowTinyLfuSettings settings) {
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     int maxMain = (int) (maximumSize * percentMain);
     this.maxProtected = (int) (maxMain * settings.percentMainProtected());
@@ -89,7 +92,7 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
     this.initialPercentMain = percentMain;
     this.policyStats = new PolicyStats(name() + " (%s %.0f%%)",
         strategy.name().toLowerCase(US), 100 * (1.0 - initialPercentMain));
-    this.admittor = new TinyLfu(settings.config(), policyStats);
+    this.admittor = Admission.TINYLFU.from(settings.config(), policyStats);
     this.climber = strategy.create(settings.config());
 
     printSegmentSizes();
@@ -97,8 +100,8 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
 
   /** Returns all variations of this policy based on the configuration parameters. */
   public static Set<Policy> policies(Config config) {
-    HillClimberWindowTinyLfuSettings settings = new HillClimberWindowTinyLfuSettings(config);
-    Set<Policy> policies = new HashSet<>();
+    var policies = new HashSet<Policy>();
+    var settings = new HillClimberWindowTinyLfuSettings(config);
     for (HillClimberType climber : settings.strategy()) {
       for (double percentMain : settings.percentMain()) {
         policies.add(new HillClimberWindowTinyLfuPolicy(climber, percentMain, settings));
@@ -119,35 +122,43 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
     Node node = data.get(key);
     admittor.record(key);
 
-    QueueType queue = null;
+    @Var QueueType queue = null;
     if (node == null) {
       onMiss(key);
       policyStats.recordMiss();
     } else {
+      onHit(node);
       queue = node.queue;
-      if (queue == WINDOW) {
-        onWindowHit(node);
-        policyStats.recordHit();
-      } else if (queue == PROBATION) {
-        onProbationHit(node);
-        policyStats.recordHit();
-      } else if (queue == PROTECTED) {
-        onProtectedHit(node);
-        policyStats.recordHit();
-      } else {
-        throw new IllegalStateException();
-      }
     }
     climb(key, queue, isFull);
   }
 
   /** Adds the entry to the admission window, evicting if necessary. */
   private void onMiss(long key) {
-    Node node = new Node(key, WINDOW);
+    var node = new Node(key, WINDOW);
     node.appendToTail(headWindow);
     data.put(key, node);
     windowSize++;
     evict();
+  }
+
+  /** Moves or promotes as if necessary. */
+  private void onHit(Node node) {
+    requireNonNull(node.queue);
+    switch (node.queue) {
+      case WINDOW:
+        onWindowHit(node);
+        policyStats.recordHit();
+        return;
+      case PROBATION:
+        onProbationHit(node);
+        policyStats.recordHit();
+        return;
+      case PROTECTED:
+        onProtectedHit(node);
+        policyStats.recordHit();
+        return;
+    }
   }
 
   /** Moves the entry to the MRU position in the admission window. */
@@ -167,7 +178,7 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
 
   private void demoteProtected() {
     if (protectedSize > maxProtected) {
-      Node demote = headProtected.next;
+      Node demote = requireNonNull(headProtected.next);
       demote.remove();
       demote.queue = PROBATION;
       demote.appendToTail(headProbation);
@@ -189,7 +200,7 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
       return;
     }
 
-    Node candidate = headWindow.next;
+    Node candidate = requireNonNull(headWindow.next);
     windowSize--;
 
     candidate.remove();
@@ -197,7 +208,7 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
     candidate.appendToTail(headProbation);
 
     if (data.size() > maximumSize) {
-      Node victim = headProbation.next;
+      Node victim = requireNonNull(headProbation.next);
       Node evict = admittor.admit(candidate.key, victim.key) ? victim : candidate;
       data.remove(evict.key);
       evict.remove();
@@ -238,6 +249,8 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
       maxProtected--;
 
       demoteProtected();
+      requireNonNull(headProbation.next);
+
       Node candidate = headProbation.next;
       candidate.remove();
       candidate.queue = WINDOW;
@@ -265,6 +278,7 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
     for (int i = 0; i < steps; i++) {
       maxWindow--;
       maxProtected++;
+      requireNonNull(headWindow.next);
 
       Node candidate = headWindow.next;
       candidate.remove();
@@ -311,9 +325,9 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
   static final class Node {
     final long key;
 
-    QueueType queue;
-    Node prev;
-    Node next;
+    @Nullable Node prev;
+    @Nullable Node next;
+    @Nullable QueueType queue;
 
     /** Creates a new sentinel node. */
     public Node() {
@@ -335,7 +349,7 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
 
     /** Appends the node to the tail of the list. */
     public void appendToHead(Node head) {
-      Node first = head.next;
+      Node first = requireNonNull(head.next);
       head.next = this;
       first.prev = this;
       prev = head;
@@ -344,7 +358,7 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
 
     /** Appends the node to the tail of the list. */
     public void appendToTail(Node head) {
-      Node tail = head.prev;
+      Node tail = requireNonNull(head.prev);
       head.prev = this;
       tail.next = this;
       next = head;
@@ -353,6 +367,9 @@ public final class HillClimberWindowTinyLfuPolicy implements KeyOnlyPolicy {
 
     /** Removes the node from the list. */
     public void remove() {
+      requireNonNull(prev);
+      requireNonNull(next);
+
       prev.next = next;
       next.prev = prev;
       next = prev = null;

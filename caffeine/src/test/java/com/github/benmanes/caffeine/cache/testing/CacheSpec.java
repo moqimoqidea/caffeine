@@ -31,7 +31,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 import java.time.Duration;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +41,8 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 import org.mockito.Mockito;
@@ -54,8 +55,10 @@ import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.github.benmanes.caffeine.cache.Scheduler;
 import com.github.benmanes.caffeine.cache.Weigher;
 import com.github.benmanes.caffeine.cache.testing.RemovalListeners.ConsumingRemovalListener;
+import com.github.benmanes.caffeine.cache.testing.Weighers.SkippedWeigher;
 import com.github.benmanes.caffeine.testing.ConcurrentTestHarness;
 import com.github.benmanes.caffeine.testing.Int;
+import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.testing.TestingExecutors;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -66,8 +69,8 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
-@SuppressWarnings("ImmutableEnumChecker")
 @Target(METHOD) @Retention(RUNTIME)
+@SuppressWarnings({"ImmutableEnumChecker", "MemberName"})
 public @interface CacheSpec {
 
   /* --------------- Compute --------------- */
@@ -194,18 +197,24 @@ public @interface CacheSpec {
     /** A flag indicating that every entry is valued at Integer.MAX_VALUE units. */
     MAX_VALUE(Integer.MAX_VALUE),
     /** A flag indicating that the entry is weighted by the absolute integer value. */
-    VALUE(() -> (key, value) -> Math.abs(((Int) value).intValue()), 1),
+    VALUE(() -> (key, value) -> Math.abs(((Int) value).intValue())),
     /** A flag indicating that the entry is weighted by the value's collection size. */
-    COLLECTION(() -> (key, value) -> ((Collection<?>) value).size(), 1),
-    /** A flag indicating that the entry's weight is randomly changing. */
-    RANDOM(Weighers::random, 1),
-    /** A flag indicating that the entry's weight records interactions. */
+    COLLECTION(() -> (key, value) -> ((Collection<?>) value).size()),
+    /**
+     * A flag indicating that the entry's weight is randomly changing and is skipped by automatic
+     * validation checks.
+     */
+    RANDOM(Weighers::random),
+    /**
+     * A flag indicating that the entry's weight records interactions and is skipped by automatic
+     * automatic validation checks.
+     */
     @SuppressWarnings("unchecked")
     MOCKITO(() -> {
-      var weigher = Mockito.mock(Weigher.class);
+      SkippedWeigher<Object, Object> weigher = Mockito.mock();
       when(weigher.weigh(any(), any())).thenReturn(1);
       return weigher;
-    }, 1);
+    });
 
     private final Supplier<Weigher<Object, Object>> factory;
     private final int units;
@@ -214,9 +223,9 @@ public @interface CacheSpec {
       this.factory = () -> Weighers.constant(units);
       this.units = units;
     }
-    CacheWeigher(Supplier<Weigher<Object, Object>> factory, int units) {
+    CacheWeigher(Supplier<Weigher<Object, Object>> factory) {
       this.factory = factory;
-      this.units = units;
+      this.units = 1;
     }
     public int unitsPerEntry() {
       return units;
@@ -266,7 +275,7 @@ public @interface CacheSpec {
   enum CacheExpiry {
     DISABLED {
       @Override public <K, V> Expiry<K, V> createExpiry(Expire expiryTime) {
-        return null;
+        throw new AssertionError();
       }
     },
     MOCKITO {
@@ -282,27 +291,24 @@ public @interface CacheSpec {
       }
     },
     CREATE {
+      @SuppressWarnings("unchecked")
       @Override public <K, V> Expiry<K, V> createExpiry(Expire expiryTime) {
-        return ExpiryBuilder
-            .expiringAfterCreate(expiryTime.duration())
-            .build();
+        return Expiry.creating(
+            (Serializable & BiFunction<K, V, Duration>) (k, v) -> expiryTime.duration());
       }
     },
     WRITE {
+      @SuppressWarnings("unchecked")
       @Override public <K, V> Expiry<K, V> createExpiry(Expire expiryTime) {
-        return ExpiryBuilder
-            .expiringAfterCreate(expiryTime.duration())
-            .expiringAfterUpdate(expiryTime.duration())
-            .build();
+        return Expiry.writing(
+            (Serializable & BiFunction<K, V, Duration>) (k, v) -> expiryTime.duration());
       }
     },
     ACCESS {
+      @SuppressWarnings("unchecked")
       @Override public <K, V> Expiry<K, V> createExpiry(Expire expiryTime) {
-        return ExpiryBuilder
-            .expiringAfterCreate(expiryTime.duration())
-            .expiringAfterUpdate(expiryTime.duration())
-            .expiringAfterRead(expiryTime.duration())
-            .build();
+        return Expiry.accessing(
+            (Serializable & BiFunction<K, V, Duration>) (k, v) -> expiryTime.duration());
       }
     };
 
@@ -319,7 +325,6 @@ public @interface CacheSpec {
     /** A configuration where entries are after a time duration. */
     ONE_MINUTE(TimeUnit.MINUTES.toNanos(1)),
     /** A configuration where entries should never expire. */
-    /** A configuration that holds the {@link Population#FULL} count. */
     FOREVER(Long.MAX_VALUE);
 
     private final long timeNanos;
@@ -393,7 +398,7 @@ public @interface CacheSpec {
     /** A {@link ConsumingRemovalListener} retains all notifications for evaluation by the test. */
     CONSUMING(RemovalListeners::consuming),
     /** A removal listener that records interactions. */
-    MOCKITO(() -> Mockito.mock(RemovalListener.class));
+    MOCKITO(Mockito::mock);
 
     private final Supplier<RemovalListener<Object, Object>> factory;
 
@@ -422,6 +427,7 @@ public @interface CacheSpec {
     },
     /** A loader that always returns null (no mapping). */
     NULL {
+      @SuppressWarnings("NullAway")
       @Override public Int load(Int key) {
         return null;
       }
@@ -464,7 +470,9 @@ public @interface CacheSpec {
       @Override public Int load(Int key) {
         throw new UnsupportedOperationException();
       }
-      @SuppressWarnings("ReturnsNullCollection")
+
+      @SuppressWarnings({"NullAway",
+        "PMD.ReturnEmptyCollectionRatherThanNull", "ReturnsNullCollection"})
       @Override public Map<Int, Int> loadAll(Set<? extends Int> keys) {
         return null;
       }
@@ -474,7 +482,7 @@ public @interface CacheSpec {
         throw new UnsupportedOperationException();
       }
       @Override public Map<Int, Int> loadAll(Set<? extends Int> keys) {
-        var result = new HashMap<Int, Int>(keys.size());
+        Map<Int, Int> result = Maps.newHashMapWithExpectedSize(keys.size());
         for (Int key : keys) {
           result.put(key, key);
           intern(key);
@@ -487,7 +495,7 @@ public @interface CacheSpec {
         throw new UnsupportedOperationException();
       }
       @Override public Map<Int, Int> loadAll(Set<? extends Int> keys) throws Exception {
-        var result = new HashMap<Int, Int>(keys.size());
+        Map<Int, Int> result = Maps.newHashMapWithExpectedSize(keys.size());
         for (Int key : keys) {
           result.put(key, NEGATIVE.load(key));
           intern(key);
@@ -788,7 +796,7 @@ public @interface CacheSpec {
 
   /* --------------- Scheduler --------------- */
 
-  /** The executors retrieved from a supplier, each resulting in a new combination. */
+  /** The schedulers retrieved from a supplier, each resulting in a new combination. */
   CacheScheduler[] scheduler() default {
     CacheScheduler.DISABLED,
   };
@@ -798,7 +806,7 @@ public @interface CacheSpec {
     DISABLED(() -> null),
     SYSTEM(Scheduler::systemScheduler),
     THREADED(() -> Scheduler.forScheduledExecutorService(scheduledExecutor)),
-    MOCKITO(() -> Mockito.mock(Scheduler.class));
+    MOCKITO(Mockito::mock);
 
     private final Supplier<Scheduler> scheduler;
 
@@ -808,6 +816,29 @@ public @interface CacheSpec {
 
     public Scheduler create() {
       return scheduler.get();
+    }
+  }
+
+  /* --------------- Ticker --------------- */
+
+  /** The starting time retrieved from a supplier, each resulting in a new combination. */
+  StartTime[] startTime() default {
+    StartTime.RANDOM,
+  };
+
+  /** The starting time that the ticker can be configured with. */
+  enum StartTime {
+    RANDOM(() -> ThreadLocalRandom.current().nextLong(Long.MIN_VALUE, Long.MAX_VALUE)),
+    ONE_MINUTE_FROM_MAX(() -> Long.MAX_VALUE - TimeUnit.MINUTES.toNanos(1));
+
+    private final LongSupplier startTime;
+
+    StartTime(LongSupplier startTime) {
+      this.startTime = requireNonNull(startTime);
+    }
+
+    public long create() {
+      return startTime.getAsLong();
     }
   }
 

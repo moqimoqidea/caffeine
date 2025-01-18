@@ -14,7 +14,7 @@
 package com.github.benmanes.caffeine.jcache;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -48,10 +48,10 @@ import com.google.common.util.concurrent.MoreExecutors;
  * @author github.com/kdombeck (Ken Dombeck)
  */
 public final class CacheProxyTest extends AbstractJCacheTest {
-  private CloseableCacheEntryListener listener = Mockito.mock();
-  private CloseableExpiryPolicy expiry = Mockito.mock();
-  private CloseableCacheLoader loader = Mockito.mock();
-  private CloseableCacheWriter writer = Mockito.mock();
+  private final CloseableCacheEntryListener listener = Mockito.mock();
+  private final CloseableExpiryPolicy expiry = Mockito.mock();
+  private final CloseableCacheLoader loader = Mockito.mock();
+  private final CloseableCacheWriter writer = Mockito.mock();
 
   @Override
   protected CaffeineConfiguration<Integer, Integer> getConfiguration() {
@@ -76,7 +76,7 @@ public final class CacheProxyTest extends AbstractJCacheTest {
   }
 
   @Test
-  @SuppressWarnings({"ObjectToString", "unchecked"})
+  @SuppressWarnings({"NullAway", "ObjectToString", "unchecked"})
   public void getConfiguration_immutable() {
     var config = jcache.getConfiguration(CaffeineConfiguration.class);
     var type = UnsupportedOperationException.class;
@@ -109,8 +109,8 @@ public final class CacheProxyTest extends AbstractJCacheTest {
     assertThat(config.toString()).isEqualTo(jcacheConfiguration.toString());
 
     var configuration = new MutableCacheEntryListenerConfiguration<Integer, Integer>(
-        /* listener */ () -> listener, /* filter */ () -> event -> true,
-        /* isOldValueRequired */ false, /* isSynchronous */ false);
+        /* listenerFactory= */ () -> listener, /* filterFactory= */ () -> event -> true,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ false);
     jcache.registerCacheEntryListener(configuration);
     assertThat(config.getCacheEntryListenerConfigurations()).hasSize(0);
 
@@ -125,11 +125,11 @@ public final class CacheProxyTest extends AbstractJCacheTest {
 
   @Test
   public void load_cacheLoaderException() {
-    var listener = Mockito.mock(CompletionListener.class);
     var e = new CacheLoaderException();
-    doThrow(e).when(listener).onCompletion();
-    jcache.loadAll(keys, true, listener);
-    verify(listener).onException(e);
+    CompletionListener completionListener = Mockito.mock();
+    doThrow(e).when(completionListener).onCompletion();
+    jcache.loadAll(keys, /* replaceExistingValues= */ true, completionListener);
+    verify(completionListener).onException(e);
   }
 
   @Test
@@ -142,7 +142,7 @@ public final class CacheProxyTest extends AbstractJCacheTest {
     when(expiry.getExpiryForAccess()).thenReturn(Duration.ETERNAL);
     var expirable = new Expirable<Integer>(KEY_1, 0);
     jcache.setAccessExpireTime(KEY_1, expirable, 0);
-    assertThat(expirable.getExpireTimeMS()).isEqualTo(Long.MAX_VALUE);
+    assertThat(expirable.getExpireTimeMillis()).isEqualTo(Long.MAX_VALUE);
   }
 
   @Test
@@ -150,13 +150,13 @@ public final class CacheProxyTest extends AbstractJCacheTest {
     when(expiry.getExpiryForAccess()).thenThrow(IllegalStateException.class);
     var expirable = new Expirable<Integer>(KEY_1, 0);
     jcache.setAccessExpireTime(KEY_1, expirable, 0);
-    assertThat(expirable.getExpireTimeMS()).isEqualTo(0);
+    assertThat(expirable.getExpireTimeMillis()).isEqualTo(0);
   }
 
   @Test
   public void getWriteExpireTime_exception() {
     when(expiry.getExpiryForCreation()).thenThrow(IllegalStateException.class);
-    long time = jcache.getWriteExpireTimeMS(true);
+    long time = jcache.getWriteexpireTimeMillis(true);
     assertThat(time).isEqualTo(Long.MIN_VALUE);
   }
 
@@ -177,7 +177,7 @@ public final class CacheProxyTest extends AbstractJCacheTest {
   public void unwrap_configuration() {
     abstract class Dummy implements Configuration<Integer, Integer> {
       private static final long serialVersionUID = 1L;
-    };
+    }
     assertThrows(IllegalArgumentException.class, () -> jcache.getConfiguration(Dummy.class));
   }
 
@@ -197,8 +197,8 @@ public final class CacheProxyTest extends AbstractJCacheTest {
     jcacheLoading.inFlight.add(CompletableFuture.failedFuture(new IllegalStateException()));
 
     var configuration = new MutableCacheEntryListenerConfiguration<Integer, Integer>(
-        /* listener */ () -> listener, /* filter */ () -> event -> true,
-        /* isOldValueRequired */ false, /* isSynchronous */ false);
+        /* listenerFactory= */ () -> listener, /* filterFactory= */ () -> event -> true,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ false);
     jcacheLoading.registerCacheEntryListener(configuration);
 
     jcacheLoading.close();

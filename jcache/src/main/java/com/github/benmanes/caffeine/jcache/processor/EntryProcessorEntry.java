@@ -23,7 +23,7 @@ import javax.cache.integration.CacheLoader;
 import javax.cache.processor.EntryProcessor;
 import javax.cache.processor.MutableEntry;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An entry that is consumed by an {@link EntryProcessor}. The updates to the entry are replayed
@@ -101,7 +101,7 @@ public final class EntryProcessorEntry<K, V> implements MutableEntry<K, V> {
       throw new IllegalArgumentException("Class " + clazz + " is unknown to this implementation");
     }
     @SuppressWarnings("unchecked")
-    T castedEntry = (T) this;
+    var castedEntry = (T) this;
     return castedEntry;
   }
 

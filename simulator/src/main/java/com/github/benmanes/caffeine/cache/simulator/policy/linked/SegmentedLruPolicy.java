@@ -19,6 +19,8 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
@@ -44,9 +46,11 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * The protected segment is finite in size. When it gets full, the overflowed will be re-cached in
  * probationary segment. Since objects in protected segment have to go a longer way before being
  * evicted, popular object or an object with more accesses tends to be kept in cache for longer
- * time." from <a href="
- * http://www.is.kyusan-u.ac.jp/~chengk/pub/papers/compsac00_A07-07.pdf">LRU-SP: A Size-Adjusted and
- * Popularity-Aware LRU Replacement Algorithm for Web Caching</a>
+ * time." from
+ * <a href="https://citeseerx.ist.psu.edu/document?doi=111f5bf8d3c528759e1ae7db0cd4af746d5b4c5b">
+ * LRU-SP: A Size-Adjusted and Popularity-Aware LRU Replacement Algorithm for Web Caching</a>. The
+ * algorithm is described by its authors in <a href="https://ieeexplore.ieee.org/document/268884">
+ * Caching Strategies to Improve Disk System Performance</a>.
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
@@ -67,8 +71,8 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
   public SegmentedLruPolicy(Admission admission, Config config) {
     this.policyStats = new PolicyStats(admission.format(name()));
     this.admittor = admission.from(config, policyStats);
+    var settings = new SegmentedLruSettings(config);
 
-    SegmentedLruSettings settings = new SegmentedLruSettings(config);
     this.headProtected = new Node();
     this.headProbation = new Node();
     this.data = new Long2ObjectOpenHashMap<>();
@@ -78,7 +82,7 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
 
   /** Returns all variations of this policy based on the configuration parameters. */
   public static Set<Policy> policies(Config config) {
-    BasicSettings settings = new BasicSettings(config);
+    var settings = new BasicSettings(config);
     return settings.admission().stream().map(admission ->
       new SegmentedLruPolicy(admission, config)
     ).collect(toUnmodifiableSet());
@@ -116,7 +120,7 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
   }
 
   private void onMiss(long key) {
-    Node node = new Node(key);
+    var node = new Node(key);
     data.put(key, node);
     policyStats.recordMiss();
     node.appendToTail(headProbation);
@@ -160,7 +164,7 @@ public final class SegmentedLruPolicy implements KeyOnlyPolicy {
 
     Node prev;
     Node next;
-    QueueType type;
+    @Nullable QueueType type;
 
     Node() {
       this.key = Long.MIN_VALUE;

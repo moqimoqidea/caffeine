@@ -18,6 +18,7 @@ package com.github.benmanes.caffeine.cache;
 import static com.github.benmanes.caffeine.cache.Specifications.BOUNDED_LOCAL_CACHE;
 import static com.github.benmanes.caffeine.cache.Specifications.kTypeVar;
 import static com.github.benmanes.caffeine.cache.Specifications.vTypeVar;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
@@ -25,7 +26,6 @@ import static java.util.Objects.requireNonNull;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Year;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.spi.ToolProvider;
 import java.util.stream.Stream;
 
 import com.github.benmanes.caffeine.cache.local.AddConstructor;
@@ -58,13 +59,11 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import com.google.common.io.Resources;
-import com.google.googlejavaformat.java.Formatter;
-import com.google.googlejavaformat.java.FormatterException;
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.JavaFile;
-import com.squareup.javapoet.ParameterizedTypeName;
-import com.squareup.javapoet.TypeName;
-import com.squareup.javapoet.TypeSpec;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.JavaFile;
+import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeName;
+import com.palantir.javapoet.TypeSpec;
 
 /**
  * Generates a factory that creates the cache optimized for the user specified configuration.
@@ -83,49 +82,50 @@ public final class LocalCacheFactoryGenerator {
   private final List<TypeSpec> factoryTypes;
   private final Path directory;
 
-  @SuppressWarnings("NullAway.Init")
   private LocalCacheFactoryGenerator(Path directory) {
     this.directory = requireNonNull(directory);
     this.factoryTypes = new ArrayList<>();
   }
 
-  private void generate() throws FormatterException, IOException {
+  private void generate() throws IOException {
     generateLocalCaches();
     writeJavaFile();
     reformat();
   }
 
   private void writeJavaFile() throws IOException {
-    String header = Resources.toString(Resources.getResource("license.txt"), UTF_8).trim();
-    ZoneId timeZone = ZoneId.of("America/Los_Angeles");
+    var header = Resources.toString(Resources.getResource("license.txt"), UTF_8).trim();
+    var timeZone = ZoneId.of("America/Los_Angeles");
     for (TypeSpec typeSpec : factoryTypes) {
       JavaFile.builder(getClass().getPackageName(), typeSpec)
           .addFileComment(header, Year.now(timeZone))
+          .skipJavaLangImports(true)
           .indent("  ")
           .build()
           .writeTo(directory);
     }
   }
 
-  private void reformat() throws FormatterException, IOException {
+  @SuppressWarnings("SystemOut")
+  private void reformat() throws IOException {
     if (Boolean.parseBoolean(System.getenv("JDK_EA"))) {
       return; // may be incompatible for EA builds
     }
     try (Stream<Path> stream = Files.walk(directory)) {
-      ImmutableList<Path> files = stream
-          .filter(path -> path.toString().endsWith(".java"))
+      ImmutableList<String> files = stream
+          .map(Path::toString)
+          .filter(path -> path.endsWith(".java"))
           .collect(toImmutableList());
-      var formatter = new Formatter();
-      for (Path file : files) {
-        String source = Files.readString(file);
-        String formatted = formatter.formatSourceAndFixImports(source);
-        Files.writeString(file, formatted);
-      }
+      ToolProvider.findFirst("google-java-format").ifPresent(formatter -> {
+        int result = formatter.run(System.out, System.err,
+            Stream.concat(Stream.of("-i"), files.stream()).toArray(String[]::new));
+        checkState(result == 0, "Java formatting failed with %s exit code", result);
+      });
     }
   }
 
   private void generateLocalCaches() {
-    NavigableMap<String, Set<Feature>> classNameToFeatures = getClassNameToFeatures();
+    NavigableMap<String, ImmutableSet<Feature>> classNameToFeatures = getClassNameToFeatures();
     classNameToFeatures.forEach((className, features) -> {
       String higherKey = classNameToFeatures.higherKey(className);
       boolean isLeaf = (higherKey == null) || !higherKey.startsWith(className);
@@ -134,17 +134,18 @@ public final class LocalCacheFactoryGenerator {
     });
   }
 
-  private NavigableMap<String, Set<Feature>> getClassNameToFeatures() {
-    var classNameToFeatures = new TreeMap<String, Set<Feature>>();
+  private NavigableMap<String, ImmutableSet<Feature>> getClassNameToFeatures() {
+    var classNameToFeatures = new TreeMap<String, ImmutableSet<Feature>>();
     for (List<Object> combination : combinations()) {
-      Set<Feature> features = getFeatures(combination);
+      ImmutableSet<Feature> features = getFeatures(combination);
       String className = encode(Feature.makeClassName(features));
       classNameToFeatures.put(className, features);
     }
     return classNameToFeatures;
   }
 
-  private Set<Feature> getFeatures(List<Object> combination) {
+  @SuppressWarnings("SetsImmutableEnumSetIterable")
+  private ImmutableSet<Feature> getFeatures(List<Object> combination) {
     var features = new LinkedHashSet<Feature>();
     features.add(((Boolean) combination.get(0)) ? Feature.STRONG_KEYS : Feature.WEAK_KEYS);
     features.add(((Boolean) combination.get(1)) ? Feature.STRONG_VALUES : Feature.INFIRM_VALUES);
@@ -156,7 +157,8 @@ public final class LocalCacheFactoryGenerator {
     if (features.contains(Feature.MAXIMUM_WEIGHT)) {
       features.remove(Feature.MAXIMUM_SIZE);
     }
-    return features;
+    // In featureByIndex order for class naming
+    return ImmutableSet.copyOf(features);
   }
 
   private Set<List<Object>> combinations() {
@@ -164,18 +166,20 @@ public final class LocalCacheFactoryGenerator {
     return Sets.cartesianProduct(sets);
   }
 
-  @SuppressWarnings("NullAway")
-  private TypeSpec makeLocalCacheSpec(String className, boolean isFinal, Set<Feature> features) {
+  @SuppressWarnings("SetsImmutableEnumSetIterable")
+  private TypeSpec makeLocalCacheSpec(String className,
+      boolean isFinal, ImmutableSet<Feature> features) {
     TypeName superClass;
-    Set<Feature> parentFeatures;
-    Set<Feature> generateFeatures;
+    ImmutableSet<Feature> parentFeatures;
+    ImmutableSet<Feature> generateFeatures;
     if (features.size() == 2) {
-      parentFeatures = Set.of();
+      parentFeatures = ImmutableSet.of();
       generateFeatures = features;
       superClass = BOUNDED_LOCAL_CACHE;
     } else {
+      // Requires that parentFeatures is in featureByIndex order for super class naming
       parentFeatures = ImmutableSet.copyOf(Iterables.limit(features, features.size() - 1));
-      generateFeatures = ImmutableSet.of(Iterables.getLast(features));
+      generateFeatures = Sets.immutableEnumSet(features.asList().get(features.size() - 1));
       superClass = ParameterizedTypeName.get(ClassName.bestGuess(
           encode(Feature.makeClassName(parentFeatures))), kTypeVar, vTypeVar);
     }
@@ -183,9 +187,11 @@ public final class LocalCacheFactoryGenerator {
     var context = new LocalCacheContext(superClass,
         className, isFinal, parentFeatures, generateFeatures);
     for (LocalCacheRule rule : rules) {
-      rule.accept(context);
+      if (rule.applies(context)) {
+        rule.execute(context);
+      }
     }
-    return context.cache.build();
+    return context.build();
   }
 
   /** Returns an encoded form of the class name for compact use. */
@@ -205,7 +211,7 @@ public final class LocalCacheFactoryGenerator {
         .replaceFirst("_REFRESH_WRITE", "R");
   }
 
-  public static void main(String[] args) throws FormatterException, IOException {
-    new LocalCacheFactoryGenerator(Paths.get(args[0])).generate();
+  public static void main(String[] args) throws IOException {
+    new LocalCacheFactoryGenerator(Path.of(args[0])).generate();
   }
 }

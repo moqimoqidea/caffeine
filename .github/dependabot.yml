@@ -3,36 +3,90 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: daily
+      interval: monthly
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: github-actions
     directory: /.github/actions/run-gradle
     schedule:
-      interval: daily
+      interval: monthly
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: gradle
     directory: /
     schedule:
-      interval: daily
+      interval: monthly
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: gradle
     directory: gradle/plugins
     schedule:
-      interval: daily
+      interval: monthly
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: gradle
     directory: examples/coalescing-bulkloader-reactor
     schedule:
-      interval: daily
-  - package-ecosystem: gradle
-    directory: examples/write-behind-rxjava
-    schedule:
-      interval: daily
+      interval: monthly
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: gradle
     directory: examples/hibernate
     schedule:
-      interval: daily
+      interval: monthly
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+  - package-ecosystem: gradle
+    directory: examples/indexable
+    schedule:
+      interval: monthly
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: gradle
     directory: examples/resilience-failsafe
     schedule:
-      interval: daily
+      interval: monthly
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
   - package-ecosystem: gradle
     directory: examples/graal-native
     schedule:
-      interval: daily
+      interval: monthly
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+  - package-ecosystem: gradle
+    directory: examples/write-behind-rxjava
+    schedule:
+      interval: monthly
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"

@@ -24,16 +24,20 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiFunction;
 
+import org.jspecify.annotations.NullUnmarked;
+
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
 import junit.framework.Test;
 import junit.framework.TestSuite;
 
-@SuppressWarnings({"IdentityConversion", "PreferredInterfaceType", "rawtypes", "try", "unchecked"})
+@NullUnmarked
+@SuppressWarnings({"EmptyCatch", "IdentityConversion", "PreferredInterfaceType",
+  "rawtypes", "try", "unchecked", "UnnecessaryFinal"})
 public class ConcurrentHashMap8Test extends JSR166TestCase {
     public static void main(String[] args) {
-        main(suite(), args);
+        main(suite());
     }
     public static Test suite() {
         return new TestSuite(ConcurrentHashMap8Test.class);
@@ -563,18 +567,18 @@ public class ConcurrentHashMap8Test extends JSR166TestCase {
 //        mustEqual(y, x);
 //    }
 
-    static final int SIZE = 10000;
-    static ConcurrentMap<Long, Long> longMap;
-
-    static ConcurrentMap<Long, Long> longMap() {
-        if (longMap == null) {
-            longMap = bounded();
-            for (int i = 0; i < SIZE; ++i) {
-              longMap.put(Long.valueOf(i), Long.valueOf(2 *i));
-            }
-        }
-        return longMap;
-    }
+//    static final int SIZE = 10000;
+//    static ConcurrentMap<Long, Long> longMap;
+//
+//    static ConcurrentMap<Long, Long> longMap() {
+//        if (longMap == null) {
+//            longMap = bounded();
+//            for (int i = 0; i < SIZE; ++i) {
+//              longMap.put(Long.valueOf(i), Long.valueOf(2 *i));
+//            }
+//        }
+//        return longMap;
+//    }
 
     // explicit function class to avoid type inference problems
     static class AddKeys implements BiFunction<Map.Entry<Long,Long>, Map.Entry<Long,Long>, Map.Entry<Long,Long>> {

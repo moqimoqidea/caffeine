@@ -18,7 +18,7 @@ package com.github.benmanes.caffeine.cache;
 import static com.github.benmanes.caffeine.testing.Awaits.await;
 import static com.google.common.truth.Truth.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -30,6 +30,7 @@ import com.github.benmanes.caffeine.testing.ConcurrentTestHarness;
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@SuppressWarnings({"ClassEscapesDefinedScope", "PMD.LooseCoupling"})
 public final class MpscGrowableArrayQueueTest {
   private static final int NUM_PRODUCERS = 10;
   private static final int PRODUCE = 100;
@@ -42,24 +43,24 @@ public final class MpscGrowableArrayQueueTest {
   @Test
   public void constructor_initialCapacity_tooSmall() {
     assertThrows(IllegalArgumentException.class, () ->
-        new MpscGrowableArrayQueue<Integer>(/* initialCapacity */ 1, /* maxCapacity */ 4));
+        new MpscGrowableArrayQueue<Integer>(/* initialCapacity= */ 1, /* maxCapacity= */ 4));
   }
 
   @Test
   public void constructor_maxCapacity_tooSmall() {
     assertThrows(IllegalArgumentException.class, () ->
-        new MpscGrowableArrayQueue<Integer>(/* initialCapacity */ 4, /* maxCapacity */ 1));
+        new MpscGrowableArrayQueue<Integer>(/* initialCapacity= */ 4, /* maxCapacity= */ 1));
   }
 
   @Test
   public void constructor_inverted() {
     assertThrows(IllegalArgumentException.class, () ->
-        new MpscGrowableArrayQueue<Integer>(/* initialCapacity */ 8, /* maxCapacity */ 4));
+        new MpscGrowableArrayQueue<Integer>(/* initialCapacity= */ 8, /* maxCapacity= */ 4));
   }
 
   @Test
   public void constructor() {
-    var queue = new MpscGrowableArrayQueue<Integer>(/* initialCapacity */ 4, /* maxCapacity */ 8);
+    var queue = new MpscGrowableArrayQueue<Integer>(/* initialCapacity= */ 4, /* maxCapacity= */ 8);
     assertThat(queue.capacity()).isEqualTo(8);
   }
 
@@ -128,7 +129,7 @@ public final class MpscGrowableArrayQueueTest {
 
   @Test(dataProvider = "full")
   public void poll_toEmpty(MpscGrowableArrayQueue<Integer> queue) {
-    while (queue.poll() != null) {}
+    while (queue.poll() != null) { /* consume */ }
     assertThat(queue).isEmpty();
   }
 
@@ -145,7 +146,7 @@ public final class MpscGrowableArrayQueueTest {
 
   @Test(dataProvider = "full")
   public void relaxedPoll_toEmpty(MpscGrowableArrayQueue<Integer> queue) {
-    while (queue.relaxedPoll() != null) {}
+    while (queue.relaxedPoll() != null) { /* consume */ }
     assertThat(queue).isEmpty();
   }
 
@@ -223,7 +224,7 @@ public final class MpscGrowableArrayQueueTest {
       started.incrementAndGet();
       await().untilAtomic(started, is(2));
       for (int i = 0; i < PRODUCE; i++) {
-        while (!queue.offer(i)) {}
+        while (!queue.offer(i)) { /* produce */ }
       }
       finished.incrementAndGet();
     });
@@ -231,7 +232,7 @@ public final class MpscGrowableArrayQueueTest {
       started.incrementAndGet();
       await().untilAtomic(started, is(2));
       for (int i = 0; i < PRODUCE; i++) {
-        while (queue.poll() == null) {}
+        while (queue.poll() == null) { /* consume */ }
       }
       finished.incrementAndGet();
     });
@@ -262,7 +263,7 @@ public final class MpscGrowableArrayQueueTest {
       started.incrementAndGet();
       await().untilAtomic(started, is(NUM_PRODUCERS + 1));
       for (int i = 0; i < (NUM_PRODUCERS * PRODUCE); i++) {
-        while (queue.poll() == null) {}
+        while (queue.poll() == null) { /* consume */ }
       }
       finished.incrementAndGet();
     });
@@ -271,7 +272,7 @@ public final class MpscGrowableArrayQueueTest {
       started.incrementAndGet();
       await().untilAtomic(started, is(NUM_PRODUCERS + 1));
       for (int i = 0; i < PRODUCE; i++) {
-        while (!queue.offer(i)) {}
+        while (!queue.offer(i)) { /* produce */ }
       }
       finished.incrementAndGet();
     });

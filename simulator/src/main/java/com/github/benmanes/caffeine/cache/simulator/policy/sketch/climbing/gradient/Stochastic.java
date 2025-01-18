@@ -26,7 +26,7 @@ import com.typesafe.config.Config;
 /**
  * Stochastic gradient descent (SGD) optimizer.
  * <p>
- * <tt>w(t+1) = w(t) - alpha * dL/dw(t)</tt> where,
+ * <code>w(t+1) = w(t) - alpha * dL/dw(t)</code> where,
  * <ul>
  *   <li><b>w(t)</b> is the current window size
  *   <li><b>alpha</b> is the learning rate (step size)
@@ -51,7 +51,7 @@ public final class Stochastic extends AbstractClimber {
   private double velocity;
 
   public Stochastic(Config config) {
-    StochasticSettings settings = new StochasticSettings(config);
+    var settings = new StochasticSettings(config);
     int maximumSize = Math.toIntExact(settings.maximumSize());
     sampleSize = (int) (settings.percentSample() * maximumSize);
     stepSize = (int) (settings.percentPivot() * maximumSize);
@@ -60,7 +60,6 @@ public final class Stochastic extends AbstractClimber {
   }
 
   @Override
-  @SuppressWarnings("PMD.SwitchStmtsShouldHaveDefault")
   protected double adjust(double hitRate) {
     double currentMissRate = (1 - hitRate);
     double previousMissRate = (1 - previousHitRate);

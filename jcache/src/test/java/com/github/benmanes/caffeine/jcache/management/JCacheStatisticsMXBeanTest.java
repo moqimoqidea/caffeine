@@ -22,11 +22,12 @@ import org.testng.annotations.Test;
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@SuppressWarnings("MemberName")
 public final class JCacheStatisticsMXBeanTest {
 
   @Test
   public void clear() {
-    JCacheStatisticsMXBean stats = new JCacheStatisticsMXBean();
+    var stats = new JCacheStatisticsMXBean();
     stats.recordHits(1);
     stats.recordMisses(1);
     stats.recordPuts(1);

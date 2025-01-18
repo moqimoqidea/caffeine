@@ -3,17 +3,15 @@ permissions: read-all
 on: [ push, pull_request ]
 
 env:
-  GRADLE_ENTERPRISE_CACHE_PASSWORD: ${{ secrets.GRADLE_ENTERPRISE_CACHE_PASSWORD }}
-  GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
-  JAVA_VERSION: 20
-  SNAPSHOT: true
+  DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
+  JAVA_VERSION: 21
 
 jobs:
   examples:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@1b05615854632b887b69ae1be8cbefe72d3ae423 # v2.6.0
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350 # v2.10.3
         with:
           disable-sudo: true
           egress-policy: block
@@ -34,37 +32,12 @@ jobs:
             repo1.maven.org:443
             services.gradle.org:443
             www.graalvm.org:443
-      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: Wandalen/wretry.action@a163f62ae554a8f3cbe27b23db15b60c0ae2e93c # v1.3.0
-        timeout-minutes: 5
-        with:
-          action: actions/setup-java@5ffc13f4174014e2d4d4572b3d74c3fa61aeb2c2 # v3.11.0
-          with: |
-            distribution: temurin
-            java-version: ${{ env.JAVA_VERSION }}
-          attempt_limit: 3
-          attempt_delay: 2000
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup Gradle
-        uses: Wandalen/wretry.action@a163f62ae554a8f3cbe27b23db15b60c0ae2e93c # v1.3.0
-        timeout-minutes: 5
+        uses: ./.github/actions/run-gradle
         with:
-          action: gradle/gradle-build-action@749f47bda3e44aa060e82d7b3ef7e40d953bd629 # v2.4.2
-          with: |
-            cache-read-only: false
-            arguments: help --no-scan
-            generate-job-summary: false
-            gradle-home-cache-cleanup: true
-            gradle-home-cache-strict-match: true
-          attempt_limit: 3
-          attempt_delay: 2000
-      - name: Setup Maven
-        uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ env.JAVA_VERSION }}-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+          java: ${{ env.JAVA_VERSION }}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Simulator
         run: >
           ./gradlew simulator:run
@@ -105,20 +78,27 @@ jobs:
       - name: Hibernate (jcache)
         working-directory: examples/hibernate
         run: ./gradlew build
+      - name: Indexable
+        working-directory: examples/indexable
+        run: ./gradlew build
       - name: Resilience (failsafe)
         working-directory: examples/resilience-failsafe
         run: ./gradlew build
       - name: Prepare for Graal Native Image
         uses: ./.github/actions/run-gradle
+        env:
+          SNAPSHOT: true
         with:
           java: GraalVM
-          token: ${{ secrets.GITHUB_TOKEN }}
           arguments: -q caffeine:clean caffeine:jar
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Graal Native Image
         uses: ./.github/actions/run-gradle
+        env:
+          SNAPSHOT: true
         with:
           java: GraalVM
-          token: ${{ secrets.GITHUB_TOKEN }}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
           arguments: >
             --project-dir examples/graal-native
             -Pagent run

@@ -17,9 +17,11 @@ package com.github.benmanes.caffeine.cache.issues;
 
 import static com.github.benmanes.caffeine.testing.Awaits.await;
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static java.util.Locale.US;
 
 import java.util.Random;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -29,6 +31,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.github.benmanes.caffeine.testing.ConcurrentTestHarness;
+import com.google.common.base.MoreObjects;
 
 /**
  * SOLR-10141: Removal listener notified with stale value
@@ -45,7 +48,7 @@ public final class Solr10141Test {
   static final int maxEntries = blocksInTest / 2;
 
   static final int nThreads = 64;
-  static final int nReads = 10000000;
+  static final int nReads = 10_000_000;
   static final int readsPerThread = nReads / nThreads;
 
   // odds (1 in N) of the next block operation being on the same block as the previous operation...
@@ -63,8 +66,9 @@ public final class Solr10141Test {
     var removals = new AtomicLong();
 
     RemovalListener<Long, Val> listener = (k, v, removalCause) -> {
+      assertThat(v).isNotNull();
       assertThat(v.key).isEqualTo(k);
-      if (!v.live.compareAndSet(true, false)) {
+      if (!v.live.compareAndSet(/* expectedValue= */ true, /* newValue= */ false)) {
         throw new RuntimeException(String.format(US,
             "listener called more than once! k=%s, v=%s, removalCause=%s", k, v, removalCause));
       }
@@ -78,8 +82,8 @@ public final class Solr10141Test {
         .build();
 
     var lastBlock = new AtomicLong();
-    var failed = new AtomicBoolean();
     var maxObservedSize = new AtomicLong();
+    var failed = new ConcurrentLinkedQueue<Throwable>();
 
     ConcurrentTestHarness.timeTasks(nThreads, new Runnable() {
 
@@ -90,8 +94,7 @@ public final class Solr10141Test {
             test(r);
           }
         } catch (Throwable e) {
-          failed.set(true);
-          e.printStackTrace();
+          failed.add(e);
         }
       }
 
@@ -104,7 +107,7 @@ public final class Solr10141Test {
         // thread was just reading/writing
         lastBlock.set(block);
 
-        Long k = block;
+        long k = block;
         Val v = cache.getIfPresent(k);
         if (v != null) {
           hits.incrementAndGet();
@@ -112,8 +115,7 @@ public final class Solr10141Test {
         }
 
         if ((v == null) || (updateAnyway && r.nextBoolean())) {
-          v = new Val();
-          v.key = k;
+          v = new Val(k);
           cache.put(k, v);
           inserts.incrementAndGet();
         }
@@ -128,22 +130,23 @@ public final class Solr10141Test {
 
     await().until(() -> (inserts.get() - removals.get()) == cache.estimatedSize());
 
-    System.out.printf(US, "Done!%n"
-        + "entries=%,d inserts=%,d removals=%,d hits=%,d maxEntries=%,d maxObservedSize=%,d%n",
-        cache.estimatedSize(), inserts.get(), removals.get(),
-        hits.get(), maxEntries, maxObservedSize.get());
-    assertThat(failed.get()).isFalse();
+    var message = String.format(US,
+        "entries=%,d inserts=%,d removals=%,d hits=%,d maxEntries=%,d maxObservedSize=%,d%n",
+        cache.estimatedSize(), inserts.get(), removals.get(), hits.get(), maxEntries,
+        maxObservedSize.get());
+    assertWithMessage(message).that(failed).isEmpty();
   }
 
   @Test
   public void clear() {
     var inserts = new AtomicLong();
     var removals = new AtomicLong();
-    var failed = new AtomicBoolean();
+    var failed = new ConcurrentLinkedQueue<Throwable>();
 
     RemovalListener<Long, Val> listener = (k, v, removalCause) -> {
+      assertThat(v).isNotNull();
       assertThat(v.key).isEqualTo(k);
-      if (!v.live.compareAndSet(true, false)) {
+      if (!v.live.compareAndSet(/* expectedValue= */ true, /* newValue= */ false)) {
         throw new RuntimeException(String.format(US,
             "listener called more than once! k=%s, v=%s, removalCause=%s", k, v, removalCause));
       }
@@ -164,21 +167,19 @@ public final class Solr10141Test {
             test(r);
           }
         } catch (Throwable e) {
-          failed.set(true);
-          e.printStackTrace();
+          failed.add(e);
         }
       }
 
       void test(Random r) {
-        Long k = (long) r.nextInt(blocksInTest);
+        long k = r.nextInt(blocksInTest);
         Val v = cache.getIfPresent(k);
         if (v != null) {
           assertThat(k).isEqualTo(v.key);
         }
 
         if ((v == null) || (updateAnyway && r.nextBoolean())) {
-          v = new Val();
-          v.key = k;
+          v = new Val(k);
           cache.put(k, v);
           inserts.incrementAndGet();
         }
@@ -191,11 +192,22 @@ public final class Solr10141Test {
 
     cache.asMap().clear();
     await().until(() -> inserts.get() == removals.get());
-    assertThat(failed.get()).isFalse();
+    assertThat(failed).isEmpty();
   }
 
-  static class Val {
-    long key;
-    AtomicBoolean live = new AtomicBoolean(true);
+  static final class Val {
+    final AtomicBoolean live;
+    final long key;
+
+    Val(long key) {
+      this.live = new AtomicBoolean(true);
+      this.key = key;
+    }
+    @Override public String toString() {
+      return MoreObjects.toStringHelper(this)
+          .add("key", key)
+          .add("live", live.get())
+          .toString();
+    }
   }
 }

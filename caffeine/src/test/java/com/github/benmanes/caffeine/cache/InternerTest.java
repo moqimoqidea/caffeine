@@ -20,7 +20,7 @@ import static com.github.benmanes.caffeine.cache.testing.CacheSubject.assertThat
 import static com.github.benmanes.caffeine.testing.MapSubject.assertThat;
 import static com.google.common.truth.Truth.assertAbout;
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
@@ -48,6 +48,7 @@ import junit.framework.TestSuite;
  */
 public final class InternerTest extends TestCase {
 
+  @SuppressWarnings("PMD.JUnit4SuitesShouldUseSuiteAnnotation")
   public static TestSuite suite() {
     return SetTestSuiteBuilder
         .using(new TestStringSetGenerator() {
@@ -64,6 +65,7 @@ public final class InternerTest extends TestCase {
         .createTestSuite();
   }
 
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "interners")
   public void intern_null(Interner<Int> interner) {
     assertThrows(NullPointerException.class, () -> interner.intern(null));
@@ -85,6 +87,7 @@ public final class InternerTest extends TestCase {
   }
 
   @Test
+  @SuppressWarnings("PMD.UnusedAssignment")
   public void intern_weak_replace() {
     var canonical = new Int(1);
     var other = new Int(1);
@@ -102,6 +105,7 @@ public final class InternerTest extends TestCase {
   }
 
   @Test
+  @SuppressWarnings("PMD.UnusedAssignment")
   public void intern_weak_remove() {
     var canonical = new Int(1);
     var next = new Int(2);
@@ -140,6 +144,7 @@ public final class InternerTest extends TestCase {
   }
 
   @Test
+  @SuppressWarnings("NullAway")
   public void factory() {
     assertThat(Interned.FACTORY.newReferenceKey(new Object(), null))
         .isInstanceOf(WeakKeyEqualsReference.class);
@@ -149,7 +154,7 @@ public final class InternerTest extends TestCase {
     var builder = Caffeine.newBuilder();
     builder.interner = true;
 
-    var factory = NodeFactory.newFactory(builder, /* async */ false);
+    var factory = NodeFactory.newFactory(builder, /* isAsync= */ false);
     assertThat(factory).isSameInstanceAs(Interned.FACTORY);
   }
 
@@ -167,7 +172,7 @@ public final class InternerTest extends TestCase {
     assertThat(node.isDead()).isTrue();
   }
 
-  private void checkSize(Interner<Int> interner, int size) {
+  private static void checkSize(Interner<Int> interner, int size) {
     if (interner instanceof StrongInterner) {
       assertThat(((StrongInterner<Int>) interner).map).hasSize(size);
     } else if (interner instanceof WeakInterner) {
@@ -185,7 +190,7 @@ public final class InternerTest extends TestCase {
     }
   }
 
-  private void checkState(Interner<Int> interner) {
+  private static void checkState(Interner<Int> interner) {
     if (interner instanceof WeakInterner) {
       assertAbout(mapLocal()).that(((WeakInterner<Int>) interner).cache).isValid();
     }

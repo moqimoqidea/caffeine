@@ -15,11 +15,16 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.two_queue;
 
+import static java.util.Objects.requireNonNull;
+
+import org.jspecify.annotations.Nullable;
+
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
+import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -58,7 +63,7 @@ public final class TwoQueuePolicy implements KeyOnlyPolicy {
   final Node headMain;
 
   public TwoQueuePolicy(Config config) {
-    TwoQueueSettings settings = new TwoQueueSettings(config);
+    var settings = new TwoQueueSettings(config);
 
     this.headIn = new Node();
     this.headOut = new Node();
@@ -71,7 +76,7 @@ public final class TwoQueuePolicy implements KeyOnlyPolicy {
   }
 
   @Override
-  @SuppressWarnings({"PMD.ConfusingTernary", "PMD.SwitchStmtsShouldHaveDefault"})
+  @SuppressWarnings("PMD.ConfusingTernary")
   public void record(long key) {
     // On accessing a page X :
     //   if X is in Am then
@@ -87,8 +92,9 @@ public final class TwoQueuePolicy implements KeyOnlyPolicy {
     //   end if
 
     policyStats.recordOperation();
-    Node node = data.get(key);
+    @Var Node node = data.get(key);
     if (node != null) {
+      requireNonNull(node.type);
       switch (node.type) {
         case MAIN:
           node.moveToTail(headMain);
@@ -111,6 +117,7 @@ public final class TwoQueuePolicy implements KeyOnlyPolicy {
           policyStats.recordHit();
           return;
       }
+      throw new IllegalStateException("Unknown type: " + node.type);
     } else {
       node = new Node(key);
       node.type = QueueType.IN;
@@ -186,7 +193,7 @@ public final class TwoQueuePolicy implements KeyOnlyPolicy {
 
     Node prev;
     Node next;
-    QueueType type;
+    @Nullable QueueType type;
 
     Node() {
       this.key = Long.MIN_VALUE;

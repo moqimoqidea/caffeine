@@ -33,7 +33,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
+
+import com.google.errorprone.annotations.Var;
 
 /**
  * This class provides a skeletal implementation of the {@link AsyncLoadingCache} interface to
@@ -106,7 +108,7 @@ abstract class LocalAsyncLoadingCache<K, V>
   /** Returns whether the supplied cache loader has bulk load functionality. */
   boolean canBulkLoad(AsyncCacheLoader<?, ?> loader) {
     try {
-      Class<?> defaultLoaderClass = AsyncCacheLoader.class;
+      @Var Class<?> defaultLoaderClass = AsyncCacheLoader.class;
       if (loader instanceof CacheLoader<?, ?>) {
         defaultLoaderClass = CacheLoader.class;
 
@@ -189,7 +191,7 @@ abstract class LocalAsyncLoadingCache<K, V>
 
       Object keyReference = asyncCache.cache().referenceKey(key);
       for (;;) {
-        var future = tryOptimisticRefresh(key, keyReference);
+        @Var var future = tryOptimisticRefresh(key, keyReference);
         if (future == null) {
           future = tryComputeRefresh(key, keyReference);
         }
@@ -230,7 +232,7 @@ abstract class LocalAsyncLoadingCache<K, V>
         if (oldValueFuture != null) {
           asyncCache.cache().remove(key, oldValueFuture);
         }
-        var future = asyncCache.get(key, asyncCache.mappingFunction, /* recordStats */ false);
+        var future = asyncCache.get(key, asyncCache.mappingFunction, /* recordStats= */ false);
         @SuppressWarnings("unchecked")
         var prior = (CompletableFuture<V>) asyncCache.cache()
             .refreshes().putIfAbsent(keyReference, future);
@@ -252,7 +254,7 @@ abstract class LocalAsyncLoadingCache<K, V>
       long[] startTime = new long[1];
       boolean[] refreshed = new boolean[1];
       @SuppressWarnings({"rawtypes", "unchecked"})
-      CompletableFuture<V>[] oldValueFuture = new CompletableFuture[1];
+      @Nullable CompletableFuture<V>[] oldValueFuture = new CompletableFuture[1];
       var future = asyncCache.cache().refreshes().computeIfAbsent(keyReference, k -> {
         oldValueFuture[0] = asyncCache.cache().getIfPresentQuietly(key);
         V oldValue = Async.getIfReady(oldValueFuture[0]);
@@ -295,36 +297,42 @@ abstract class LocalAsyncLoadingCache<K, V>
             return;
           }
 
-          boolean[] discard = new boolean[1];
-          var value = asyncCache.cache().compute(key, (ignored, currentValue) -> {
-            var successful = asyncCache.cache().refreshes().remove(keyReference, castedFuture);
-            if (successful && (currentValue == oldValueFuture[0])) {
-              if (currentValue == null) {
-                // If the entry is absent then discard the refresh and maybe notifying the listener
-                discard[0] = (newValue != null);
-                return null;
-              } else if ((currentValue == newValue) || (currentValue == castedFuture)) {
-                // If the reloaded value is the same instance then no-op
-                return currentValue;
-              } else if (newValue == Async.getIfReady((CompletableFuture<?>) currentValue)) {
-                // If the completed futures hold the same value instance then no-op
-                return currentValue;
+          try {
+            boolean[] discard = new boolean[1];
+            var value = asyncCache.cache().compute(key, (ignored, currentValue) -> {
+              var successful = asyncCache.cache().refreshes().remove(keyReference, castedFuture);
+              if (successful && (currentValue == oldValueFuture[0])) {
+                if (currentValue == null) {
+                  // If absent then discard the refresh and maybe notifying the listener
+                  discard[0] = (newValue != null);
+                  return null;
+                } else if ((currentValue == newValue) || (currentValue == castedFuture)) {
+                  // If the reloaded value is the same instance then no-op
+                  return currentValue;
+                } else if (newValue == Async.getIfReady((CompletableFuture<?>) currentValue)) {
+                  // If the completed futures hold the same value instance then no-op
+                  return currentValue;
+                }
+                return (newValue == null) ? null : castedFuture;
               }
-              return (newValue == null) ? null : castedFuture;
-            }
-            // Otherwise, a write invalidated the refresh so discard it and notify the listener
-            discard[0] = true;
-            return currentValue;
-          }, asyncCache.cache().expiry(), /* recordLoad */ false, /* recordLoadFailure */ true);
+              // Otherwise, a write invalidated the refresh so discard it and notify the listener
+              discard[0] = true;
+              return currentValue;
+            }, asyncCache.cache().expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ true);
 
-          if (discard[0] && (newValue != null)) {
-            var cause = (value == null) ? RemovalCause.EXPLICIT : RemovalCause.REPLACED;
-            asyncCache.cache().notifyRemoval(key, castedFuture, cause);
-          }
-          if (newValue == null) {
+            if (discard[0] && (newValue != null)) {
+              var cause = (value == null) ? RemovalCause.EXPLICIT : RemovalCause.REPLACED;
+              asyncCache.cache().notifyRemoval(key, castedFuture, cause);
+            }
+            if (newValue == null) {
+              asyncCache.cache().statsCounter().recordLoadFailure(loadTime);
+            } else {
+              asyncCache.cache().statsCounter().recordLoadSuccess(loadTime);
+            }
+          } catch (Throwable t) {
+            logger.log(Level.WARNING, "Exception thrown during asynchronous load", t);
             asyncCache.cache().statsCounter().recordLoadFailure(loadTime);
-          } else {
-            asyncCache.cache().statsCounter().recordLoadSuccess(loadTime);
+            asyncCache.cache().remove(key, castedFuture);
           }
         });
       }

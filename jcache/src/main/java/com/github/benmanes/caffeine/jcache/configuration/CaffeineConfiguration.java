@@ -33,7 +33,8 @@ import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CacheLoader;
 import javax.cache.integration.CacheWriter;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.Expiry;
 import com.github.benmanes.caffeine.cache.Scheduler;
@@ -46,13 +47,14 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 /**
  * A JCache configuration with Caffeine specific settings.
  * <p>
- * The initial settings disable <tt>store by value</tt> so that entries are not copied when crossing
- * the {@link javax.cache.Cache} API boundary. If enabled and the {@link Copier} is not explicitly
- * set, then the {@link JavaSerializationCopier} will be used. This differs from
- * {@link MutableConfiguration} which enables <tt>store by value</tt> at construction.
+ * The initial settings disable <code>store by value</code> so that entries are not copied when
+ * crossing the {@link javax.cache.Cache} API boundary. If enabled and the {@link Copier} is not
+ * explicitly set, then the {@link JavaSerializationCopier} will be used. This differs from
+ * {@link MutableConfiguration} which enables <code>store by value</code> at construction.
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@NullMarked
 public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<K, V> {
   private static final Factory<Scheduler> DISABLED_SCHEDULER = Scheduler::disabledScheduler;
   private static final Factory<Copier> JAVA_COPIER = JavaSerializationCopier::new;
@@ -90,13 +92,13 @@ public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<
 
   /** Returns a modifiable copy of the configuration. */
   public CaffeineConfiguration(CompleteConfiguration<K, V> configuration) {
-    this(configuration, /* readOnly */ false);
+    this(configuration, /* readOnly= */ false);
   }
 
   private CaffeineConfiguration(CompleteConfiguration<K, V> configuration, boolean readOnly) {
     delegate = new MutableConfiguration<>(configuration);
     if (configuration instanceof CaffeineConfiguration<?, ?>) {
-      CaffeineConfiguration<K, V> config = (CaffeineConfiguration<K, V>) configuration;
+      var config = (CaffeineConfiguration<K, V>) configuration;
       refreshAfterWriteNanos = config.refreshAfterWriteNanos;
       expireAfterAccessNanos = config.expireAfterAccessNanos;
       expireAfterWriteNanos = config.expireAfterWriteNanos;
@@ -120,7 +122,7 @@ public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<
 
   /** Returns an unmodifiable copy of this configuration. */
   public CaffeineConfiguration<K, V> immutableCopy() {
-    return new CaffeineConfiguration<>(this, /* immutable */ true);
+    return new CaffeineConfiguration<>(this, /* readOnly= */ true);
   }
 
   private void checkIfReadOnly() {
@@ -182,7 +184,7 @@ public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<
   @CanIgnoreReturnValue
   @SuppressWarnings("PMD.LinguisticNaming")
   public CaffeineConfiguration<K, V> setCacheLoaderFactory(
-      Factory<? extends CacheLoader<K, V>> factory) {
+      @Nullable Factory<? extends CacheLoader<K, V>> factory) {
     checkIfReadOnly();
     delegate.setCacheLoaderFactory(factory);
     return this;
@@ -198,7 +200,7 @@ public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<
     var factory = delegate.getCacheWriterFactory();
     if (factory != null) {
       @SuppressWarnings("unchecked")
-      CacheWriter<K , V> writer = (CacheWriter<K, V>) factory.create();
+      var writer = (CacheWriter<K, V>) factory.create();
       return writer;
     }
     return null;
@@ -213,7 +215,7 @@ public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<
   @CanIgnoreReturnValue
   @SuppressWarnings("PMD.LinguisticNaming")
   public CaffeineConfiguration<K, V> setCacheWriterFactory(
-      Factory<? extends CacheWriter<? super K, ? super V>> factory) {
+      @Nullable Factory<? extends CacheWriter<? super K, ? super V>> factory) {
     checkIfReadOnly();
     delegate.setCacheWriterFactory(factory);
     return this;
@@ -228,7 +230,7 @@ public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<
   @CanIgnoreReturnValue
   @SuppressWarnings("PMD.LinguisticNaming")
   public CaffeineConfiguration<K, V> setExpiryPolicyFactory(
-      Factory<? extends ExpiryPolicy> factory) {
+      @Nullable Factory<? extends ExpiryPolicy> factory) {
     checkIfReadOnly();
     delegate.setExpiryPolicyFactory(factory);
     return this;
@@ -606,13 +608,13 @@ public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<
   }
 
   @Override
-  public boolean equals(Object o) {
+  public boolean equals(@Nullable Object o) {
     if (o == this) {
       return true;
     } else if (!(o instanceof CaffeineConfiguration<?, ?>)) {
       return false;
     }
-    CaffeineConfiguration<?, ?> config = (CaffeineConfiguration<?, ?>) o;
+    var config = (CaffeineConfiguration<?, ?>) o;
     return Objects.equals(refreshAfterWriteNanos, config.refreshAfterWriteNanos)
         && Objects.equals(expireAfterAccessNanos, config.expireAfterAccessNanos)
         && Objects.equals(expireAfterWriteNanos, config.expireAfterWriteNanos)
@@ -638,7 +640,7 @@ public final class CaffeineConfiguration<K, V> implements CompleteConfiguration<
     }
     @Override public Iterator<E> iterator() {
       var iterator = delegate.iterator();
-      return new Iterator<E>() {
+      return new Iterator<>() {
         @Override public boolean hasNext() {
           return iterator.hasNext();
         }

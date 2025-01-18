@@ -33,7 +33,7 @@ import javax.cache.configuration.CompleteConfiguration;
 import javax.cache.configuration.Configuration;
 import javax.cache.spi.CachingProvider;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An implementation of JSR-107 {@link CacheManager} that manages Caffeine-based caches.
@@ -111,7 +111,7 @@ public final class CacheManagerImpl implements CacheManager {
       enableStatistics(cache.getName(), config.isStatisticsEnabled());
 
       @SuppressWarnings("unchecked")
-      Cache<K, V> castedCache = (Cache<K, V>) cache;
+      var castedCache = (Cache<K, V>) cache;
       return castedCache;
     } finally {
       Thread.currentThread().setContextClassLoader(old);
@@ -119,7 +119,7 @@ public final class CacheManagerImpl implements CacheManager {
   }
 
   @Override
-  public @Nullable <K, V> Cache<K, V> getCache(
+  public <K, V> @Nullable Cache<K, V> getCache(
       String cacheName, Class<K> keyType, Class<V> valueType) {
     ClassLoader old = Thread.currentThread().getContextClassLoader();
     try {
@@ -172,7 +172,7 @@ public final class CacheManagerImpl implements CacheManager {
       });
 
       @SuppressWarnings("unchecked")
-      CacheProxy<K, V> castedCache = (CacheProxy<K, V>) cache;
+      var castedCache = (CacheProxy<K, V>) cache;
       return castedCache;
     } finally {
       Thread.currentThread().setContextClassLoader(old);
@@ -240,7 +240,7 @@ public final class CacheManagerImpl implements CacheManager {
 
   @Override
   public <T> T unwrap(Class<T> clazz) {
-    if (clazz.isAssignableFrom(getClass())) {
+    if (clazz.isInstance(this)) {
       return clazz.cast(this);
     }
     throw new IllegalArgumentException("Unwapping to " + clazz

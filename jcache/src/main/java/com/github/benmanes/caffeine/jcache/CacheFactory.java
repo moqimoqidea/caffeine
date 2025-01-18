@@ -30,7 +30,7 @@ import javax.cache.expiry.EternalExpiryPolicy;
 import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CacheLoader;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
@@ -43,6 +43,7 @@ import com.github.benmanes.caffeine.jcache.event.EventDispatcher;
 import com.github.benmanes.caffeine.jcache.event.JCacheEvictionListener;
 import com.github.benmanes.caffeine.jcache.integration.JCacheLoaderAdapter;
 import com.github.benmanes.caffeine.jcache.management.JCacheStatisticsMXBean;
+import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
 
 /**
@@ -72,7 +73,8 @@ final class CacheFactory {
    * @param cacheName the name of the cache
    * @return a new cache instance or null if the named cache is not defined in the settings file
    */
-  public static @Nullable <K, V> CacheProxy<K, V> tryToCreateFromExternalSettings(
+  @SuppressWarnings("resource")
+  public static <K, V> @Nullable CacheProxy<K, V> tryToCreateFromExternalSettings(
       CacheManager cacheManager, String cacheName) {
     return TypesafeConfigurator.<K, V>from(rootConfig(cacheManager), cacheName)
         .map(configuration -> createCache(cacheManager, cacheName, configuration))
@@ -109,7 +111,7 @@ final class CacheFactory {
 
     CaffeineConfiguration<K, V> template = TypesafeConfigurator.defaults(rootConfig(cacheManager));
     if (configuration instanceof CompleteConfiguration<?, ?>) {
-      CompleteConfiguration<K, V> complete = (CompleteConfiguration<K, V>) configuration;
+      var complete = (CompleteConfiguration<K, V>) configuration;
       template.setReadThrough(complete.isReadThrough());
       template.setWriteThrough(complete.isWriteThrough());
       template.setManagementEnabled(complete.isManagementEnabled());
@@ -161,11 +163,11 @@ final class CacheFactory {
 
     /** Creates a configured cache. */
     public CacheProxy<K, V> build() {
-      boolean evicts = false;
+      @Var boolean evicts = false;
       evicts |= configureMaximumSize();
       evicts |= configureMaximumWeight();
 
-      boolean expires = false;
+      @Var boolean expires = false;
       expires |= configureExpireAfterWrite();
       expires |= configureExpireAfterAccess();
       expires |= configureExpireVariably();
@@ -177,7 +179,7 @@ final class CacheFactory {
         caffeine.recordStats();
       }
 
-      JCacheEvictionListener<K, V> evictionListener = null;
+      @Var JCacheEvictionListener<K, V> evictionListener = null;
       if (evicts || expires) {
         evictionListener = new JCacheEvictionListener<>(dispatcher, statistics);
         caffeine.evictionListener(evictionListener);
@@ -204,23 +206,21 @@ final class CacheFactory {
 
     /** Creates a cache that does not read through on a cache miss. */
     private CacheProxy<K, V> newCacheProxy() {
-      Optional<CacheLoader<K, V>> cacheLoader =
-          Optional.ofNullable(config.getCacheLoaderFactory()).map(Factory::create);
+      var cacheLoaderFactory = config.getCacheLoaderFactory();
+      var cacheLoader = (cacheLoaderFactory == null) ? null : cacheLoaderFactory.create();
       return new CacheProxy<>(cacheName, executor, cacheManager, config, caffeine.build(),
-          dispatcher, cacheLoader, expiryPolicy, ticker, statistics);
+          dispatcher, Optional.ofNullable(cacheLoader), expiryPolicy, ticker, statistics);
     }
 
     /** Creates a cache that reads through on a cache miss. */
     private CacheProxy<K, V> newLoadingCacheProxy() {
-      var factory = config.getCacheLoaderFactory();
-      if (factory == null) {
-        throw new IllegalStateException();
-      }
-
-      CacheLoader<K, V> cacheLoader = factory.create();
-      JCacheLoaderAdapter<K, V> adapter = new JCacheLoaderAdapter<>(
+      @SuppressWarnings("NullAway")
+      CacheLoader<K, V> cacheLoader = config.getCacheLoaderFactory().create();
+      var adapter = new JCacheLoaderAdapter<>(
           cacheLoader, dispatcher, expiryPolicy, ticker, statistics);
-      CacheProxy<K, V> cache = new LoadingCacheProxy<>(cacheName, executor, cacheManager, config,
+      // NullAway appears not to understand `V1 extends @Nullable V` in Caffeine.build.
+      @SuppressWarnings("NullAway")
+      var cache = new LoadingCacheProxy<>(cacheName, executor, cacheManager, config,
           caffeine.build(adapter), dispatcher, cacheLoader, expiryPolicy, ticker, statistics);
       adapter.setCache(cache);
       return cache;
@@ -326,12 +326,12 @@ final class CacheFactory {
       return toNanos(expirable);
     }
     private long toNanos(Expirable<V> expirable) {
-      if (expirable.getExpireTimeMS() == 0L) {
+      if (expirable.getExpireTimeMillis() == 0L) {
         return -1L;
       } else if (expirable.isEternal()) {
         return Long.MAX_VALUE;
       }
-      return TimeUnit.MILLISECONDS.toNanos(expirable.getExpireTimeMS()) - ticker.read();
+      return TimeUnit.MILLISECONDS.toNanos(expirable.getExpireTimeMillis()) - ticker.read();
     }
   }
 }

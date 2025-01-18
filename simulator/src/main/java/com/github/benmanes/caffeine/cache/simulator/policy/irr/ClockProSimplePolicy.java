@@ -17,12 +17,15 @@ package com.github.benmanes.caffeine.cache.simulator.policy.irr;
 
 import static com.google.common.base.Preconditions.checkState;
 
+import org.jspecify.annotations.Nullable;
+
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -35,7 +38,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * scanned.
  * <p>
  * ClockPro uses three hands that scan the queue. The hot hand points to the largest recency, the
- * cold hand to the cold entry furthest from the hot hand, and the test hand to the last cold entry
+ * cold hand to the cold entry farthest from the hot hand, and the test hand to the last cold entry
  * in the test period. This policy is adaptive by adjusting the percentage of hot and cold entries
  * that may reside in the cache. It uses non-resident (ghost) entries to retain additional history,
  * which are removed during the test hand's scan. The algorithm is explained by the authors in
@@ -43,7 +46,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * Effective Improvement of the CLOCK Replacement</a> and
  * <a href="http://www.slideshare.net/huliang64/clockpro">Clock-Pro: An Effective Replacement in OS
  * Kernel</a>.
- *
+ * <p>
  * This implementation works exactly like ClockPro, but pursues the simplicity of the code.
  * It divides a single list of ClockPro into three lists: hot, cold, and non-resident.
  * For maintaining a test period of each entry, it uses epoch.
@@ -70,7 +73,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
 
   private int sizeHot;
   private int sizeCold;
-  private int sizeNR;
+  private int sizeNonResident;
 
   // To know the order of entries, epoch is used. The epoch is incremented by 1 when a new entry is
   // inserted, or when an existing entry has been re-accessed and moved to the head. The epoch is
@@ -98,7 +101,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
   private int coldTarget;
 
   public ClockProSimplePolicy(Config config) {
-    BasicSettings settings = new BasicSettings(config);
+    var settings = new BasicSettings(config);
     this.maxSize = Math.toIntExact(settings.maximumSize());
     this.minColdSize = this.maxSize / 100;
     this.maxColdSize = this.maxSize - (this.maxSize / 100);
@@ -120,13 +123,13 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
     if (debug) {
       printClock();
     }
-    int cold = (int) data.values().stream()
+    long cold = data.values().stream()
       .filter(node -> node.status == Status.COLD)
       .count();
-    int hot = (int) data.values().stream()
+    long hot = data.values().stream()
       .filter(node -> node.status == Status.HOT)
       .count();
-    int nonResident = (int) data.values().stream()
+    long nonResident = data.values().stream()
       .filter(node -> node.status == Status.NR)
       .count();
 
@@ -134,8 +137,8 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
       "Cold: expected %s but was %s", sizeCold, cold);
     checkState(hot == sizeHot,
       "Hot: expected %s but was %s", sizeHot, hot);
-    checkState(nonResident == sizeNR,
-      "NonResident: expected %s but was %s", sizeNR, nonResident);
+    checkState(nonResident == sizeNonResident,
+      "NonResident: expected %s but was %s", sizeNonResident, nonResident);
     checkState(data.size() == (cold + hot + nonResident));
     checkState(cold + hot <= maxSize);
     checkState(nonResident <= maxSize);
@@ -165,7 +168,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
     policyStats.recordOperation();
     policyStats.recordMiss();
     epoch++;
-    Node node = new Node(key, epoch);
+    var node = new Node(key, epoch);
     node.status = Status.COLD;
     node.link(headCold);
     data.put(key, node);
@@ -175,7 +178,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
 
   // Prune removes all non-resident entries whose test period has expired.
   private void prune() {
-    while (sizeNR > 0 && !inTestPeriod(headNonResident.prev)) {
+    while ((sizeNonResident > 0) && !inTestPeriod(headNonResident.prev)) {
       scanNonResident();
     }
   }
@@ -184,7 +187,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
     policyStats.recordOperation();
     policyStats.recordMiss();
     node.unlink();
-    sizeNR--;
+    sizeNonResident--;
     if (canPromote(node)) {
       node.status = Status.HOT;
       node.link(headHot);
@@ -258,13 +261,13 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
       if (inTestPeriod(victim)) {
         victim.status = Status.NR;
         victim.link(headNonResident);
-        sizeNR++;
+        sizeNonResident++;
       } else {
         data.remove(victim.key);
       }
       // We keep track the number of non-resident cold entries. Once the number exceeds the limit,
       // we terminate the test period of the oldest non-resident entry.
-      while (sizeNR > maxSize) {
+      while (sizeNonResident > maxSize) {
         scanNonResident();
       }
     }
@@ -273,7 +276,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
   // ScanHot demotes a hot entry between the oldest hot entry's epoch and the given epoch.
   // If the demotion was successful it returns true, otherwise it returns false.
   @CanIgnoreReturnValue
-  private boolean scanHot(long epoch) {
+  private boolean scanHot(@Var long epoch) {
     for (Node victim = headHot.prev; victim.epoch <= epoch; victim = headHot.prev) {
       policyStats.recordOperation();
       victim.unlink();
@@ -308,7 +311,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
     Node victim = headNonResident.prev;
     victim.unlink();
     data.remove(victim.key);
-    sizeNR--;
+    sizeNonResident--;
     // If a cold entry passes its test period without a re-access, we decrement coldTarget.
     adjustColdTarget(-1);
   }
@@ -344,7 +347,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
       }
       System.out.println("** CLOCK-Pro list HOT TAIL (large recency) **");
     }
-    if (sizeNR > 0) {
+    if (sizeNonResident > 0) {
       System.out.println("** CLOCK-Pro list NR HEAD (small recency) **");
       for (Node n = headNonResident.next; n != headNonResident; n = n.next) {
         System.out.println(n);
@@ -361,7 +364,7 @@ public final class ClockProSimplePolicy implements KeyOnlyPolicy {
     final long key;
     long epoch;
 
-    Status status;
+    @Nullable Status status;
     Node prev;
     Node next;
 

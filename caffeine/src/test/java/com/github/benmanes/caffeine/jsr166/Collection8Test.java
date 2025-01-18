@@ -10,6 +10,9 @@ import static java.util.Locale.US;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
+import java.io.NotSerializableException;
+import java.io.Serializable;
+import java.lang.reflect.Array;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,11 +22,13 @@ import java.util.ConcurrentModificationException;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Queue;
 import java.util.Set;
 import java.util.Spliterator;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -40,16 +45,20 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import org.jspecify.annotations.NullUnmarked;
+
 import junit.framework.Test;
 
 /**
  * Contains tests applicable to all jdk8+ Collection implementations.
  * An extension of CollectionTest.
  */
+@NullUnmarked
 @SuppressWarnings({"CatchAndPrintStackTrace", "CollectionAddAllToCollectionBlock",
     "CollectionForEach", "CollectionIsEmpty", "CollectionToArray", "CollectorMutability",
-    "LabelledBreakTarget", "MethodReferenceUsage", "MissingDefault", "MissingFail", "rawtypes",
-    "ReturnValueIgnored", "try", "unchecked", "UnnecessaryParentheses", "YodaCondition"})
+    "EmptyCatch", "LabelledBreakTarget", "MemberName", "MethodReferenceUsage", "MissingDefault",
+    "MissingFail", "MultiVariableDeclaration", "rawtypes", "ReturnValueIgnored", "SystemOut",
+    "try", "unchecked", "UnnecessaryFinal", "UnnecessaryParentheses", "YodaCondition"})
 public class Collection8Test extends JSR166TestCase {
     final CollectionImplementation impl;
 
@@ -78,10 +87,10 @@ public class Collection8Test extends JSR166TestCase {
         Collection c = impl.emptyCollection();
         emptyMeansEmpty(c);
 
-        if (c instanceof java.io.Serializable) {
+        if (c instanceof Serializable) {
             try {
                 emptyMeansEmpty(serialClonePossiblyFailing(c));
-            } catch (java.io.NotSerializableException ex) {
+            } catch (NotSerializableException ex) {
                 // excusable when we have a serializable wrapper around
                 // a non-serializable collection, as can happen with:
                 // Vector.subList() => wrapped AbstractList$RandomAccessSubList
@@ -178,7 +187,7 @@ public class Collection8Test extends JSR166TestCase {
         }
     }
 
-    public void testNullPointerExceptions() throws InterruptedException {
+    public void testNullPointerExceptions() {
         Collection c = impl.emptyCollection();
         Collection nullCollection = null;
         assertThrows(
@@ -399,7 +408,7 @@ public class Collection8Test extends JSR166TestCase {
         if (s.hasCharacteristics(Spliterator.CONCURRENT)) {
             c.clear();          // TODO: many more removal methods
             if (testImplementationDetails
-                && !(c instanceof java.util.concurrent.ArrayBlockingQueue)) {
+                && !(c instanceof ArrayBlockingQueue)) {
                 if (rnd.nextBoolean()) {
                   assertFalse(s.tryAdvance(alwaysThrows));
                 } else {
@@ -480,7 +489,7 @@ public class Collection8Test extends JSR166TestCase {
             assertTrue(iteratedAndRemoved.size() <= 1);
             assertTrue(spliteratedAndRemoved.size() <= 1);
             if (testImplementationDetails
-                && !(c instanceof java.util.concurrent.ArrayBlockingQueue)) {
+                && !(c instanceof ArrayBlockingQueue)) {
               assertTrue(spliteratedAndRemoved.isEmpty());
             }
         }
@@ -571,7 +580,7 @@ public class Collection8Test extends JSR166TestCase {
     public void testForEachRemainingConsistentWithDefaultImplementation() {
         Collection c = impl.emptyCollection();
         if (!testImplementationDetails
-            || c.getClass() == java.util.LinkedList.class) {
+            || c.getClass() == LinkedList.class) {
           return;
         }
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
@@ -650,7 +659,7 @@ public class Collection8Test extends JSR166TestCase {
                     assertTrue(c.contains(e));
                     assertTrue(copy.contains(e));});
             if (testImplementationDetails) {
-                if (c instanceof java.util.concurrent.ArrayBlockingQueue) {
+                if (c instanceof ArrayBlockingQueue) {
                     assertIteratorExhausted(it);
                 } else {
                     try { it.remove(); }
@@ -869,7 +878,7 @@ public class Collection8Test extends JSR166TestCase {
             }
         };
         final Object[] emptyArray =
-            (Object[]) java.lang.reflect.Array.newInstance(one.getClass(), 0);
+            (Object[]) Array.newInstance(one.getClass(), 0);
         final List<Future<?>> futures;
         final Phaser threadsStarted = new Phaser(1); // register this thread
         final Runnable[] frobbers = {
@@ -1014,7 +1023,7 @@ public class Collection8Test extends JSR166TestCase {
             Collection serialClone = serialClonePossiblyFailing(c);
             assertSame(c.getClass(), serialClone.getClass());
             assertCollectionsEquivalent(c, serialClone);
-        } catch (java.io.NotSerializableException acceptable) {}
+        } catch (NotSerializableException acceptable) {}
     }
 
     /**

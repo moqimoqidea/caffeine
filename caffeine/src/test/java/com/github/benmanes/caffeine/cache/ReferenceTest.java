@@ -22,15 +22,17 @@ import static com.github.benmanes.caffeine.cache.testing.AsyncCacheSubject.asser
 import static com.github.benmanes.caffeine.cache.testing.CacheContext.intern;
 import static com.github.benmanes.caffeine.cache.testing.CacheContextSubject.assertThat;
 import static com.github.benmanes.caffeine.cache.testing.CacheSubject.assertThat;
+import static com.github.benmanes.caffeine.testing.CollectionSubject.assertThat;
 import static com.github.benmanes.caffeine.testing.FutureSubject.assertThat;
+import static com.github.benmanes.caffeine.testing.LoggingEvents.logEvents;
 import static com.github.benmanes.caffeine.testing.MapSubject.assertThat;
 import static com.google.common.base.Predicates.equalTo;
 import static com.google.common.base.Predicates.not;
-import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.truth.Truth.assertThat;
+import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
@@ -38,6 +40,7 @@ import static org.slf4j.event.Level.WARN;
 
 import java.util.AbstractMap;
 import java.util.AbstractMap.SimpleEntry;
+import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +76,6 @@ import com.github.benmanes.caffeine.cache.testing.CacheValidationListener;
 import com.github.benmanes.caffeine.cache.testing.CheckMaxLogLevel;
 import com.github.benmanes.caffeine.cache.testing.CheckNoStats;
 import com.github.benmanes.caffeine.testing.Int;
-import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
 import com.google.common.testing.EqualsTester;
@@ -89,8 +91,9 @@ import com.google.common.testing.GcFinalization;
 @Test(groups = "slow", dataProviderClass = CacheProvider.class)
 public final class ReferenceTest {
 
-  // These tests require that the JVM uses -XX:SoftRefLRUPolicyMSPerMB=0 and -XX:+UseParallelGC so
-  // that soft references can be reliably garbage collected by making them behave as weak
+  // These tests require that the JVM uses a garbage collection algorithm that strictly honors
+  // -XX:SoftRefLRUPolicyMSPerMB=0 (-XX:+UseParallelGC until 23; -XX:+UseShenandoahGC onward)
+  // so that soft references can be reliably garbage collected by making them behave as weak
   // references.
 
   @Test(dataProvider = "caches")
@@ -116,15 +119,12 @@ public final class ReferenceTest {
 
     assertThat(context.cache()).whenCleanedUp().isEmpty();
     assertThat(context).evictionNotifications().hasSize(context.initialSize());
-
-    var events = TestLoggerFactory.getLoggingEvents().stream()
-        .filter(e -> e.getFormattedMessage().equals("Exception thrown by eviction listener"))
-        .collect(toImmutableList());
-    assertThat(events).hasSize((int) context.initialSize());
-    for (var event : events) {
-      assertThat(event.getThrowable().orElseThrow()).isInstanceOf(RejectedExecutionException.class);
-      assertThat(event.getLevel()).isEqualTo(WARN);
-    }
+    assertThat(logEvents()
+        .withMessage("Exception thrown by eviction listener")
+        .withThrowable(RejectedExecutionException.class)
+        .withLevel(WARN)
+        .exclusively())
+        .hasSize(context.initialSize());
   }
 
   /* --------------- Cache --------------- */
@@ -205,8 +205,8 @@ public final class ReferenceTest {
 
     context.clear();
     GcFinalization.awaitFullGc();
-    assertThat(cache.getAll(keys, keysToLoad -> Maps.asMap(keysToLoad, Int::negate)))
-        .containsExactlyEntriesIn(Maps.asMap(keys, Int::negate));
+    assertThat(cache.getAll(keys, keysToLoad -> Maps.toMap(keysToLoad, Int::negate)))
+        .containsExactlyEntriesIn(Maps.toMap(keys, Int::negate));
 
     assertThat(cache).whenCleanedUp().hasSize(keys.size());
     assertThat(context).notifications().withCause(COLLECTED)
@@ -300,7 +300,8 @@ public final class ReferenceTest {
     List<Map.Entry<Int, Int>> collected;
     var keys = context.firstMiddleLastKeys();
     if (context.isStrongValues()) {
-      retained = Maps.toMap(context.firstMiddleLastKeys(), key -> context.original().get(key));
+      retained = Maps.toMap(context.firstMiddleLastKeys(),
+          key -> requireNonNull(context.original().get(key)));
       collected = getExpectedAfterGc(context,
           Maps.filterKeys(context.original(), not(keys::contains)));
     } else {
@@ -336,7 +337,8 @@ public final class ReferenceTest {
     List<Map.Entry<Int, Int>> collected = getExpectedAfterGc(context,
         Maps.filterKeys(context.original(), not(keys::contains)));
     if (context.isStrongValues()) {
-      retained = Maps.toMap(context.firstMiddleLastKeys(), key -> context.original().get(key));
+      retained = Maps.toMap(context.firstMiddleLastKeys(),
+          key -> requireNonNull(context.original().get(key)));
     } else {
       retained = Map.of();
       for (var key : keys) {
@@ -429,7 +431,7 @@ public final class ReferenceTest {
 
     context.clear();
     GcFinalization.awaitFullGc();
-    assertThat(cache.getAll(keys)).containsExactlyEntriesIn(Maps.asMap(keys, Int::negate));
+    assertThat(cache.getAll(keys)).containsExactlyEntriesIn(Maps.toMap(keys, Int::negate));
     assertThat(cache).whenCleanedUp().hasSize(keys.size());
 
     assertThat(context).notifications().withCause(COLLECTED)
@@ -505,8 +507,8 @@ public final class ReferenceTest {
 
     context.clear();
     GcFinalization.awaitFullGc();
-    assertThat(cache.getAll(keys, keysToLoad -> Maps.asMap(keysToLoad, Int::negate)).join())
-        .containsExactlyEntriesIn(Maps.asMap(keys, Int::negate));
+    assertThat(cache.getAll(keys, keysToLoad -> Maps.toMap(keysToLoad, Int::negate)).join())
+        .containsExactlyEntriesIn(Maps.toMap(keys, Int::negate));
     assertThat(context).notifications().withCause(COLLECTED)
         .contains(collected).exclusively();
   }
@@ -521,7 +523,7 @@ public final class ReferenceTest {
     Int key = context.absentKey();
     context.clear();
     GcFinalization.awaitFullGc();
-    cache.put(key, context.absentValue().asFuture());
+    cache.put(key, context.absentValue().toFuture());
 
     assertThat(cache).hasSize(1);
     assertThat(context).notifications().withCause(COLLECTED)
@@ -567,6 +569,7 @@ public final class ReferenceTest {
   }
 
   @Test(dataProvider = "caches")
+  @SuppressWarnings("PMD.UnusedAssignment")
   @CacheSpec(population = Population.FULL, requiresWeakOrSoft = true,
       expireAfterAccess = Expire.DISABLED, expireAfterWrite = Expire.DISABLED,
       maximumSize = Maximum.DISABLED, weigher = CacheWeigher.DISABLED,
@@ -589,7 +592,8 @@ public final class ReferenceTest {
       maximumSize = Maximum.DISABLED, weigher = CacheWeigher.DISABLED,
       stats = Stats.ENABLED, removalListener = Listener.CONSUMING)
   public void clear(Map<Int, Int> map, CacheContext context) {
-    var retained = Maps.toMap(context.firstMiddleLastKeys(), key -> context.original().get(key));
+    var retained = Maps.toMap(context.firstMiddleLastKeys(),
+        key -> requireNonNull(context.original().get(key)));
     var collected = getExpectedAfterGc(context, Maps.difference(
         context.original(), retained).entriesOnlyOnLeft());
 
@@ -1251,6 +1255,7 @@ public final class ReferenceTest {
 
   /* --------------- Reference --------------- */
 
+  @SuppressWarnings("ClassEscapesDefinedScope")
   @Test(dataProviderClass = ReferenceTest.class, dataProvider = "references")
   public void reference(InternalReference<Int> reference,
       Int item, boolean identity, boolean isKey) {
@@ -1300,13 +1305,14 @@ public final class ReferenceTest {
     };
   }
 
-  private List<Map.Entry<Int, Int>> getExpectedAfterGc(
+  @SuppressWarnings("MapEntry")
+  private static List<Map.Entry<Int, Int>> getExpectedAfterGc(
       CacheContext context, Map<Int, Int> original) {
     var expected = new ArrayList<Map.Entry<Int, Int>>();
     original.forEach((key, value) -> {
       key = context.isStrongKeys() ? new Int(key) : null;
       value = context.isStrongValues() ? new Int(value) : null;
-      expected.add(new SimpleEntry<>(key, value));
+      expected.add(new SimpleImmutableEntry<>(key, value));
     });
     return expected;
   }

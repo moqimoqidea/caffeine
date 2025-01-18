@@ -22,7 +22,7 @@ import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.stats.StatsCounter;
 
@@ -82,7 +82,7 @@ interface LocalCache<K, V> extends ConcurrentMap<K, V> {
    * the statistics nor the eviction policy.
    */
   @Nullable
-  V getIfPresentQuietly(K key);
+  V getIfPresentQuietly(Object key);
 
   /** See {@link Cache#getAllPresent}. */
   Map<K, V> getAllPresent(Iterable<? extends K> keys);
@@ -97,7 +97,7 @@ interface LocalCache<K, V> extends ConcurrentMap<K, V> {
   default @Nullable V compute(K key,
       BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
     return compute(key, remappingFunction, expiry(),
-        /* recordLoad */ true, /* recordLoadFailure */ true);
+        /* recordLoad= */ true, /* recordLoadFailure= */ true);
   }
 
   /**
@@ -109,7 +109,7 @@ interface LocalCache<K, V> extends ConcurrentMap<K, V> {
 
   @Override
   default @Nullable V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction) {
-    return computeIfAbsent(key, mappingFunction, /* recordStats */ true, /* recordLoad */ true);
+    return computeIfAbsent(key, mappingFunction, /* recordStats= */ true, /* recordLoad= */ true);
   }
 
   /**
@@ -131,7 +131,7 @@ interface LocalCache<K, V> extends ConcurrentMap<K, V> {
 
   /** Notify the removal listener of a replacement if the value reference was changed. */
   @SuppressWarnings("FutureReturnValueIgnored")
-  default void notifyOnReplace(K key, V oldValue, V newValue) {
+  default void notifyOnReplace(K key, @Nullable V oldValue, V newValue) {
     if ((oldValue == null) || (oldValue == newValue)) {
       return;
     } else if (isAsync()) {
@@ -153,7 +153,7 @@ interface LocalCache<K, V> extends ConcurrentMap<K, V> {
     }
   }
 
-  /** Decorates the remapping function to record statistics if enabled. */
+  /** Decorates the mapping function to record statistics if enabled, recording a miss if called. */
   default <T, R> Function<? super T, ? extends R> statsAware(
       Function<? super T, ? extends R> mappingFunction, boolean recordLoad) {
     if (!isRecordingStats()) {
@@ -165,9 +165,9 @@ interface LocalCache<K, V> extends ConcurrentMap<K, V> {
       long startTime = statsTicker().read();
       try {
         value = mappingFunction.apply(key);
-      } catch (RuntimeException | Error e) {
+      } catch (Throwable t) {
         statsCounter().recordLoadFailure(statsTicker().read() - startTime);
-        throw e;
+        throw t;
       }
       long loadTime = statsTicker().read() - startTime;
       if (recordLoad) {
@@ -184,7 +184,7 @@ interface LocalCache<K, V> extends ConcurrentMap<K, V> {
   /** Decorates the remapping function to record statistics if enabled. */
   default <T, U, R> BiFunction<? super T, ? super U, ? extends R> statsAware(
       BiFunction<? super T, ? super U, ? extends R> remappingFunction) {
-    return statsAware(remappingFunction, /* recordLoad */ true, /* recordLoadFailure */ true);
+    return statsAware(remappingFunction, /* recordLoad= */ true, /* recordLoadFailure= */ true);
   }
 
   /** Decorates the remapping function to record statistics if enabled. */

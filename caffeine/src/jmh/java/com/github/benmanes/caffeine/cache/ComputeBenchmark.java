@@ -18,7 +18,6 @@ package com.github.benmanes.caffeine.cache;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 
 import org.openjdk.jmh.annotations.Benchmark;
@@ -38,7 +37,8 @@ import site.ycsb.generator.ScrambledZipfianGenerator;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @State(Scope.Benchmark)
-@SuppressWarnings({"LexicographicalAnnotationAttributeListing", "PMD.MethodNamingConventions"})
+@SuppressWarnings({"LexicographicalAnnotationAttributeListing",
+  "MemberName", "PMD.MethodNamingConventions"})
 public class ComputeBenchmark {
   static final int SIZE = (2 << 14);
   static final int MASK = SIZE - 1;
@@ -93,7 +93,7 @@ public class ComputeBenchmark {
   }
 
   private void setupConcurrentHashMap() {
-    ConcurrentMap<Integer, Boolean> map = new ConcurrentHashMap<>();
+    var map = new ConcurrentHashMap<Integer, Boolean>();
     benchmarkFunction = key -> map.computeIfAbsent(key, mappingFunction);
   }
 

@@ -16,7 +16,7 @@
 package com.github.benmanes.caffeine.jcache.integration;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
@@ -42,7 +42,7 @@ import com.github.benmanes.caffeine.jcache.configuration.CaffeineConfiguration;
  */
 @Test(singleThreaded = true)
 public final class CacheWriterTest extends AbstractJCacheTest {
-  private CloseableCacheWriter writer = Mockito.mock();
+  private final CloseableCacheWriter writer = Mockito.mock();
 
   @Override
   protected CaffeineConfiguration<Integer, Integer> getConfiguration() {
@@ -109,6 +109,14 @@ public final class CacheWriterTest extends AbstractJCacheTest {
     DisabledCacheWriter.get().writeAll(null);
     DisabledCacheWriter.get().delete(null);
     DisabledCacheWriter.get().deleteAll(null);
+  }
+
+  @Test
+  public void hasCacheWriter() {
+    var noWriter = new CaffeineConfiguration<>(jcacheConfiguration)
+        .setCacheWriterFactory(null);
+    assertThat(noWriter.hasCacheWriter()).isFalse();
+    assertThat(jcacheConfiguration.hasCacheWriter()).isTrue();
   }
 
   interface CloseableCacheWriter extends CacheWriter<Integer, Integer>, Closeable {}

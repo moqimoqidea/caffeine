@@ -28,6 +28,7 @@ import java.util.Objects;
 import com.google.common.base.CaseFormat;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
+import com.google.errorprone.annotations.Var;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -38,7 +39,7 @@ import picocli.CommandLine.Option;
  * A simple utility to rewrite traces into the format used by other simulators. This lets us run
  * multiple simulators in parallel for a quick-and-dirty analysis, rather than port their code into
  * Java.
- * <p>
+ *
  * <pre>{@code
  *   ./gradlew :simulator:rewrite -q \
  *      --inputFormat=? \
@@ -92,8 +93,8 @@ public final class Rewriter implements Runnable {
   private static String[] argumentsWithDefaults(String[] args) {
     var params = Lists.newArrayList(args);
     if (!params.contains("--inputFormat")) {
-      boolean found = false;
-      boolean defaultFormat = true;
+      @Var boolean found = false;
+      @Var boolean defaultFormat = true;
       for (int i = 0; i < args.length - 1; i++) {
         if (Objects.equals(args[i], "--inputFiles")) {
           defaultFormat &= args[i + 1].contains(":");

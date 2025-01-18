@@ -44,6 +44,8 @@ public final class HashClashTest {
   private static final int STEP = 5;
   private static final Long LONG_1 = 1L;
   private static final long ITERS = 200_000;
+  private static final Long CLASH = (ITERS << 32) ^ ITERS ^ 1;
+
   private static final boolean debug = false;
 
   @Test(dataProvider = "caches")
@@ -58,7 +60,6 @@ public final class HashClashTest {
     printKeys(cache);
 
     // add a hashcode clash for 1
-    Long CLASH = (ITERS << 32) ^ ITERS ^ 1;
     assertThat(CLASH.hashCode()).isEqualTo(LONG_1.hashCode());
     cache.get(CLASH, identity());
     printKeys(cache);
@@ -83,6 +84,7 @@ public final class HashClashTest {
     assertThat(cache.stats().hitRate()).isGreaterThan(0.99d);
   }
 
+  @SuppressWarnings("SystemOut")
   static void printStats(Cache<Long, Long> cache) {
     if (debug) {
       System.out.printf("size %,d requests %,d hit ratio %f%n",
@@ -90,6 +92,7 @@ public final class HashClashTest {
     }
   }
 
+  @SuppressWarnings("SystemOut")
   static void printKeys(Cache<Long, Long> cache) {
     if (debug) {
       Set<Long> keys = cache.policy().eviction()

@@ -5,9 +5,9 @@ pluginManagement {
   }
 }
 plugins {
-  id("com.gradle.enterprise") version "3.15"
-  id("com.gradle.common-custom-user-data-gradle-plugin") version "1.11.3"
-  id("org.gradle.toolchains.foojay-resolver-convention") version "0.7.0"
+  id("com.gradle.develocity") version "3.19"
+  id("com.gradle.common-custom-user-data-gradle-plugin") version "2.0.2"
+  id("org.gradle.toolchains.foojay-resolver-convention") version "0.9.0"
 }
 
 dependencyResolutionManagement {
@@ -16,6 +16,6 @@ dependencyResolutionManagement {
   }
 }
 
-apply(from = "../../gradle/gradle-enterprise.gradle")
+apply(from = "../../gradle/develocity.gradle")
 
 rootProject.name = "graal-native"

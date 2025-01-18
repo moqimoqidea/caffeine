@@ -18,7 +18,7 @@ import junit.framework.Test;
 @SuppressWarnings("rawtypes")
 public class KeySetTest extends JSR166TestCase {
     public static void main(String[] args) {
-        main(suite(), args);
+        main(suite());
     }
 
     public static Test suite() {
@@ -42,8 +42,8 @@ public class KeySetTest extends JSR166TestCase {
         }
         return newTestSuite(
                 KeySetTest.class,
-                CollectionTest.testSuite(new Implementation(false)),
-                CollectionTest.testSuite(new Implementation(true)));
+                CollectionTest.testSuite(new Implementation(/* bounded= */ false)),
+                CollectionTest.testSuite(new Implementation(/* bounded= */ true)));
     }
 
     private static <E> Set<E> set(boolean bounded) {

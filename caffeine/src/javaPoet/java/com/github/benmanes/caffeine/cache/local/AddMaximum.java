@@ -21,30 +21,30 @@ import static org.apache.commons.lang3.StringUtils.capitalize;
 import javax.lang.model.element.Modifier;
 
 import com.github.benmanes.caffeine.cache.Feature;
-import com.squareup.javapoet.CodeBlock;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.MethodSpec;
+import com.palantir.javapoet.CodeBlock;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.MethodSpec;
 
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
-public final class AddMaximum extends LocalCacheRule {
+public final class AddMaximum implements LocalCacheRule {
 
   @Override
-  protected boolean applies() {
+  public boolean applies(LocalCacheContext context) {
     return !(Feature.usesMaximum(context.parentFeatures)
         || !Feature.usesMaximum(context.generateFeatures));
   }
 
   @Override
-  protected void execute() {
-    addEvicts();
-    addMaximumSize();
-    addHillClimber();
-    addFrequencySketch();
+  public void execute(LocalCacheContext context) {
+    addEvicts(context);
+    addMaximumSize(context);
+    addHillClimber(context);
+    addFrequencySketch(context);
   }
 
-  private void addEvicts() {
+  private static void addEvicts(LocalCacheContext context) {
     context.cache.addMethod(MethodSpec.methodBuilder("evicts")
         .addModifiers(context.protectedFinalModifiers())
         .addStatement("return true")
@@ -52,24 +52,24 @@ public final class AddMaximum extends LocalCacheRule {
         .build());
   }
 
-  private void addMaximumSize() {
-    addField(long.class, "maximum");
-    addField(long.class, "weightedSize");
-    addField(long.class, "windowMaximum");
-    addField(long.class, "windowWeightedSize");
-    addField(long.class, "mainProtectedMaximum");
-    addField(long.class, "mainProtectedWeightedSize");
+  private static void addMaximumSize(LocalCacheContext context) {
+    addField(context, long.class, "maximum");
+    addField(context, long.class, "weightedSize");
+    addField(context, long.class, "windowMaximum");
+    addField(context, long.class, "windowWeightedSize");
+    addField(context, long.class, "mainProtectedMaximum");
+    addField(context, long.class, "mainProtectedWeightedSize");
   }
 
-  private void addHillClimber() {
-    addField(double.class, "stepSize");
-    addField(long.class, "adjustment");
-    addField(int.class, "hitsInSample");
-    addField(int.class, "missesInSample");
-    addField(double.class, "previousSampleHitRate");
+  private static void addHillClimber(LocalCacheContext context) {
+    addField(context, double.class, "stepSize");
+    addField(context, long.class, "adjustment");
+    addField(context, int.class, "hitsInSample");
+    addField(context, int.class, "missesInSample");
+    addField(context, double.class, "previousSampleHitRate");
   }
 
-  private void addFrequencySketch() {
+  private static void addFrequencySketch(LocalCacheContext context) {
     context.cache.addField(FieldSpec.builder(
         FREQUENCY_SKETCH, "sketch", Modifier.FINAL).build());
     context.constructor.addCode(CodeBlock.builder()
@@ -86,7 +86,7 @@ public final class AddMaximum extends LocalCacheRule {
         .build());
   }
 
-  private void addField(Class<?> type, String name) {
+  private static void addField(LocalCacheContext context, Class<?> type, String name) {
     context.cache.addField(FieldSpec.builder(type, name).build());
     context.cache.addMethod(MethodSpec.methodBuilder(name)
         .addModifiers(context.protectedFinalModifiers())

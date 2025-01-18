@@ -16,10 +16,13 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.util.Arrays;
 import java.util.Set;
+
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
@@ -40,7 +43,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * higher queue (items in queue 3 move to the head of queue 3). Each queue is allocated 1/4 of the
  * total cache size and items are evicted from the tail of a queue to the head of the next lower
  * queue to maintain the size invariants. Items evicted from queue 0 are evicted from the cache."
- *
+ * <p>
  * For more details, see <a href="http://www.cs.cornell.edu/~qhuang/papers/sosp_fbanalysis.pdf">An
  * Analysis of Facebook Photo Caching</a>.
  *
@@ -57,7 +60,7 @@ public final class S4LruPolicy implements KeyOnlyPolicy {
   private final int levels;
 
   public S4LruPolicy(Admission admission, Config config) {
-    S4LruSettings settings = new S4LruSettings(config);
+    var settings = new S4LruSettings(config);
     this.policyStats = new PolicyStats(admission.format(name()));
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.admittor = admission.from(config, policyStats);
@@ -71,7 +74,7 @@ public final class S4LruPolicy implements KeyOnlyPolicy {
 
   /** Returns all variations of this policy based on the configuration parameters. */
   public static Set<Policy> policies(Config config) {
-    BasicSettings settings = new BasicSettings(config);
+    var settings = new BasicSettings(config);
     return settings.admission().stream().map(admission ->
       new S4LruPolicy(admission, config)
     ).collect(toUnmodifiableSet());
@@ -106,7 +109,7 @@ public final class S4LruPolicy implements KeyOnlyPolicy {
   }
 
   private void onMiss(long key) {
-    Node node = new Node(key);
+    var node = new Node(key);
     data.put(key, node);
     node.appendToTail(headQ[0]);
     sizeQ[0]++;
@@ -119,7 +122,7 @@ public final class S4LruPolicy implements KeyOnlyPolicy {
     int maxPerLevel = maximumSize / levels;
     for (int i = levels - 1; i > 0; i--) {
       if (sizeQ[i] > maxPerLevel) {
-        Node demote = headQ[i].next;
+        Node demote = requireNonNull(headQ[i].next);
         demote.remove();
         sizeQ[i]--;
 
@@ -134,7 +137,7 @@ public final class S4LruPolicy implements KeyOnlyPolicy {
     if (data.size() > maximumSize) {
       policyStats.recordEviction();
 
-      Node victim = headQ[0].next;
+      Node victim = requireNonNull(headQ[0].next);
       boolean admit = admittor.admit(candidate.key, victim.key);
       if (admit) {
         evictEntry(victim);
@@ -168,16 +171,18 @@ public final class S4LruPolicy implements KeyOnlyPolicy {
   static final class Node {
     final long key;
 
-    Node prev;
-    Node next;
+    @Nullable Node prev;
+    @Nullable Node next;
+
     int level;
 
     Node(long key) {
       this.key = key;
+      prev = next = this;
     }
 
     static Node sentinel(int level) {
-      Node node = new Node(Long.MIN_VALUE);
+      var node = new Node(Long.MIN_VALUE);
       node.level = level;
       node.prev = node;
       node.next = node;
@@ -186,7 +191,7 @@ public final class S4LruPolicy implements KeyOnlyPolicy {
 
     /** Appends the node to the tail of the list. */
     public void appendToTail(Node head) {
-      Node tail = head.prev;
+      Node tail = requireNonNull(head.prev);
       head.prev = this;
       tail.next = this;
       next = head;
@@ -195,6 +200,9 @@ public final class S4LruPolicy implements KeyOnlyPolicy {
 
     /** Removes the node from the list. */
     public void remove() {
+      requireNonNull(prev);
+      requireNonNull(next);
+
       prev.next = next;
       next.prev = prev;
       prev = next = null;

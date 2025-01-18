@@ -16,10 +16,13 @@
 package com.github.benmanes.caffeine.guava.compatibility;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
 import java.util.stream.IntStream;
+
+import org.jspecify.annotations.NullUnmarked;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.guava.CaffeinatedGuava;
@@ -31,6 +34,7 @@ import junit.framework.TestCase;
 /**
  * Test Java8 map.compute in concurrent cache context.
  */
+@NullUnmarked
 @SuppressWarnings("PreferJavaTimeOverload")
 public class LocalCacheMapComputeTest extends TestCase {
   final int count = 10000;
@@ -98,7 +102,7 @@ public class LocalCacheMapComputeTest extends TestCase {
     doParallelCacheOp(count, n -> {
       cache.asMap().compute(key, (k, v) -> n % 2 == 0 ? v + delimiter + n : null);
     });
-    assertTrue(1 >= cache.size());
+    assertThat(cache.size()).isAtMost(1);
   }
 
   public void testCompute() {
@@ -111,11 +115,10 @@ public class LocalCacheMapComputeTest extends TestCase {
   }
 
   public void testComputeExceptionally() {
-    try {
-      doParallelCacheOp(count, n -> {
-        cache.asMap().compute(key, (k, v) -> { throw new RuntimeException(); });
+    assertThrows(RuntimeException.class, () -> doParallelCacheOp(count, n -> {
+      cache.asMap().compute(key, (k, v) -> {
+        throw new RuntimeException();
       });
-      fail("Should not get here");
-    } catch (RuntimeException expected) {}
+    }));
   }
 }

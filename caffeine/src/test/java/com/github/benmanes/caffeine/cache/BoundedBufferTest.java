@@ -31,6 +31,7 @@ import com.github.benmanes.caffeine.testing.ConcurrentTestHarness;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@SuppressWarnings("ClassEscapesDefinedScope")
 public final class BoundedBufferTest {
 
   @DataProvider
@@ -82,6 +83,7 @@ public final class BoundedBufferTest {
 
   @Test
   public void overflow() {
+    @SuppressWarnings("NullAway")
     var buffer = new BoundedBuffer.RingBuffer<Boolean>(null);
     buffer.writeCounter = Long.MAX_VALUE;
     buffer.readCounter = Long.MAX_VALUE;
@@ -96,5 +98,13 @@ public final class BoundedBufferTest {
     assertThat(data).containsExactly(Boolean.TRUE);
     assertThat(buffer.readCounter).isEqualTo(Long.MIN_VALUE);
     assertThat(buffer.writeCounter).isEqualTo(Long.MIN_VALUE);
+  }
+
+  @Test
+  @SuppressWarnings("PMD.AvoidAccessibilityAlteration")
+  public void reflectivelyConstruct() throws ReflectiveOperationException {
+    var constructor = BBHeader.class.getDeclaredConstructor();
+    constructor.setAccessible(true);
+    constructor.newInstance();
   }
 }

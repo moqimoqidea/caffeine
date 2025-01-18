@@ -28,34 +28,34 @@ import javax.lang.model.element.Modifier;
 
 import com.github.benmanes.caffeine.cache.Feature;
 import com.google.common.collect.ImmutableList;
-import com.squareup.javapoet.MethodSpec;
-import com.squareup.javapoet.ParameterSpec;
+import com.palantir.javapoet.MethodSpec;
+import com.palantir.javapoet.ParameterSpec;
 
 /**
  * @author github.com/jvassev (Julian Vassev)
  */
-public final class AddFactoryMethods extends NodeRule {
+public final class AddFactoryMethods implements NodeRule {
 
   @Override
-  protected boolean applies() {
+  public boolean applies(NodeContext context) {
     return true;
   }
 
   @Override
-  protected void execute() {
-    addFactories();
+  public void execute(NodeContext context) {
+    addFactories(context);
 
     if (context.generateFeatures.contains(Feature.WEAK_KEYS)) {
-      addWeakKeys();
+      addWeakKeys(context);
     }
     if (context.generateFeatures.contains(Feature.WEAK_VALUES)) {
-      addWeakValues();
+      addWeakValues(context);
     } else if (context.generateFeatures.contains(Feature.SOFT_VALUES)) {
-      addSoftValues();
+      addSoftValues(context);
     }
   }
 
-  private void addFactories() {
+  private static void addFactories(NodeContext context) {
     context.nodeSubtype.addMethod(
         newNode(keySpec, keyRefQueueSpec)
             .addStatement("return new $N<>(key, keyReferenceQueue, value, "
@@ -68,7 +68,7 @@ public final class AddFactoryMethods extends NodeRule {
             .build());
   }
 
-  private void addWeakKeys() {
+  private static void addWeakKeys(NodeContext context) {
     context.nodeSubtype.addMethod(MethodSpec.methodBuilder("newLookupKey")
         .addModifiers(Modifier.PUBLIC)
         .addParameter(Object.class, "key")
@@ -84,7 +84,7 @@ public final class AddFactoryMethods extends NodeRule {
         .build());
   }
 
-  private void addSoftValues() {
+  private static void addSoftValues(NodeContext context) {
     context.nodeSubtype.addMethod(MethodSpec.methodBuilder("softValues")
         .addModifiers(Modifier.PUBLIC)
         .addStatement("return true")
@@ -92,7 +92,7 @@ public final class AddFactoryMethods extends NodeRule {
         .build());
   }
 
-  private void addWeakValues() {
+  private static void addWeakValues(NodeContext context) {
     context.nodeSubtype.addMethod(MethodSpec.methodBuilder("weakValues")
         .addModifiers(Modifier.PUBLIC)
         .addStatement("return true")
@@ -100,7 +100,7 @@ public final class AddFactoryMethods extends NodeRule {
         .build());
   }
 
-  private MethodSpec.Builder newNode(ParameterSpec... keyParams) {
+  private static MethodSpec.Builder newNode(ParameterSpec... keyParams) {
     return MethodSpec.methodBuilder("newNode")
         .addModifiers(Modifier.PUBLIC)
         .addParameters(ImmutableList.copyOf(keyParams))

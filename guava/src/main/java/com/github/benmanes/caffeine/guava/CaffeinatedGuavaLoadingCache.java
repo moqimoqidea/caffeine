@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
@@ -188,7 +188,7 @@ final class CaffeinatedGuavaLoadingCache<K, V>
         if (loaded == null) {
           throw new InvalidCacheLoadException("null map");
         }
-        Map<K, V> result = new HashMap<>(loaded.size(), /* load factor */ 1.0f);
+        var result = new HashMap<K, V>(loaded.size(), /* loadFactor= */ 1.0f);
         loaded.forEach((key, value) -> {
           if ((key == null) || (value == null)) {
             nullBulkLoad.set(true);

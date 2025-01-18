@@ -101,7 +101,7 @@ public final class Issue30Test {
     secondUpdate(cache, source);
   }
 
-  private void initialValues(AsyncLoadingCache<String, String> cache,
+  private static void initialValues(AsyncLoadingCache<String, String> cache,
       ConcurrentMap<String, String> source, ConcurrentMap<String, Instant> lastLoad) {
     source.put(A_KEY, A_ORIGINAL);
     source.put(B_KEY, B_ORIGINAL);
@@ -112,7 +112,7 @@ public final class Issue30Test {
   }
 
   @SuppressWarnings("PreferJavaTimeOverload")
-  private void firstUpdate(AsyncLoadingCache<String, String> cache,
+  private static void firstUpdate(AsyncLoadingCache<String, String> cache,
       ConcurrentMap<String, String> source) throws InterruptedException {
     source.put(A_KEY, A_UPDATE_1);
     source.put(B_KEY, B_UPDATE_1);
@@ -132,7 +132,7 @@ public final class Issue30Test {
   }
 
   @SuppressWarnings("PreferJavaTimeOverload")
-  private void secondUpdate(AsyncLoadingCache<String, String> cache,
+  private static void secondUpdate(AsyncLoadingCache<String, String> cache,
       ConcurrentMap<String, String> source) throws InterruptedException {
     source.put(A_KEY, A_UPDATE_2);
     source.put(B_KEY, B_UPDATE_2);
@@ -151,7 +151,7 @@ public final class Issue30Test {
 
   static final class Loader implements AsyncCacheLoader<String, String> {
     private static final DateTimeFormatter FORMATTER =
-        DateTimeFormatter.ofPattern("hh:MM:ss.SSS", US);
+        DateTimeFormatter.ofPattern("HH:mm:ss.SSS", US);
 
     final ConcurrentMap<String, String> source;
     final ConcurrentMap<String, Instant> lastLoad;
@@ -167,7 +167,7 @@ public final class Issue30Test {
       return CompletableFuture.completedFuture(source.get(key));
     }
 
-    @SuppressWarnings("TimeZoneUsage")
+    @SuppressWarnings({"SystemOut", "TimeZoneUsage"})
     private void reportCacheMiss(String key) {
       Instant now = Instant.now();
       Instant last = lastLoad.get(key);

@@ -21,6 +21,7 @@ import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.util.Locale.US;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -49,6 +50,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.linked.LinkedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.MultiQueuePolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.S4LruPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.SegmentedLruPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.linked.SievePolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.UnboundedPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.Cache2kPolicy;
@@ -58,7 +60,6 @@ import com.github.benmanes.caffeine.cache.simulator.policy.product.Ehcache3Polic
 import com.github.benmanes.caffeine.cache.simulator.policy.product.ExpiringMapPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.GuavaPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.HazelcastPolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.product.OhcPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.product.TCachePolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sampled.SampledPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.WindowTinyLfuPolicy;
@@ -72,11 +73,12 @@ import com.github.benmanes.caffeine.cache.simulator.policy.sketch.segment.S4Wind
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.tinycache.TinyCachePolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.tinycache.TinyCacheWithGhostCachePolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.sketch.tinycache.WindowTinyCachePolicy;
-import com.github.benmanes.caffeine.cache.simulator.policy.two_queue.QdlpPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.two_queue.S3FifoPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.two_queue.TuQueuePolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.two_queue.TwoQueuePolicy;
 import com.google.auto.value.AutoValue;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.typesafe.config.Config;
 
 /**
@@ -140,6 +142,7 @@ public final class Registry {
   }
 
   /** Registers the policy using the specified name. */
+  @SuppressWarnings("InconsistentOverloads")
   private void registerMany(String name, Class<? extends Policy> policyClass,
       Function<Config, Set<Policy>> creator) {
     factories.put(name.trim().toLowerCase(US), Factory.of(policyClass, creator));
@@ -159,6 +162,7 @@ public final class Registry {
       registerMany(policy.label(), FrequentlyUsedPolicy.class,
           config -> FrequentlyUsedPolicy.policies(config, policy));
     }
+    register(SievePolicy.class, SievePolicy::new);
     registerMany(S4LruPolicy.class, S4LruPolicy::policies);
     register(MultiQueuePolicy.class, MultiQueuePolicy::new);
     registerMany(SegmentedLruPolicy.class, SegmentedLruPolicy::policies);
@@ -172,7 +176,7 @@ public final class Registry {
   }
 
   private void registerTwoQueue() {
-    register(QdlpPolicy.class, QdlpPolicy::new);
+    register(S3FifoPolicy.class, S3FifoPolicy::new);
     register(TuQueuePolicy.class, TuQueuePolicy::new);
     register(TwoQueuePolicy.class, TwoQueuePolicy::new);
   }
@@ -223,7 +227,6 @@ public final class Registry {
   private void registerProduct() {
     register(GuavaPolicy.class, GuavaPolicy::new);
     register(Cache2kPolicy.class, Cache2kPolicy::new);
-    registerMany(OhcPolicy.class, OhcPolicy::policies);
     register(CaffeinePolicy.class, CaffeinePolicy::new);
     register(Ehcache3Policy.class, Ehcache3Policy::new);
     registerMany(TCachePolicy.class, TCachePolicy::policies);
@@ -237,11 +240,11 @@ public final class Registry {
     abstract Class<? extends Policy> policyClass();
     abstract Function<Config, Set<Policy>> creator();
 
-    Set<Characteristic> characteristics() {
+    ImmutableSet<Characteristic> characteristics() {
       var policySpec = policyClass().getAnnotation(PolicySpec.class);
       return (policySpec == null)
           ? ImmutableSet.of()
-          : ImmutableSet.copyOf(policySpec.characteristics());
+          : Sets.immutableEnumSet(Arrays.asList(policySpec.characteristics()));
     }
 
     static Factory of(Class<? extends Policy> policyClass, Function<Config, Set<Policy>> creator) {

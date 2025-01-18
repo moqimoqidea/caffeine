@@ -19,7 +19,7 @@ import java.lang.ref.ReferenceQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
@@ -27,12 +27,13 @@ import org.openjdk.jmh.annotations.State;
 
 /**
  * <pre>{@code
- *   ./gradlew jmh -PincludePattern=TimerWheelBenchmark
+ *   ./gradlew jmh -PincludePattern=TimerWheelBenchmark --rerun
  * }</pre>
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @State(Scope.Benchmark)
+@SuppressWarnings("ClassEscapesDefinedScope")
 public class TimerWheelBenchmark {
   private static final int SIZE = (2 << 14);
   private static final int MASK = SIZE - 1;
@@ -111,8 +112,8 @@ public class TimerWheelBenchmark {
   }
 
   static final class Timer extends Node<Integer, Integer> {
-    Node<Integer, Integer> prev;
-    Node<Integer, Integer> next;
+    @Nullable Node<Integer, Integer> prev;
+    @Nullable Node<Integer, Integer> next;
     long time;
 
     Timer(long time) {
@@ -125,12 +126,14 @@ public class TimerWheelBenchmark {
     @Override public void setVariableTime(long time) {
       this.time = time;
     }
+    @SuppressWarnings("NullAway")
     @Override public Node<Integer, Integer> getPreviousInVariableOrder() {
       return prev;
     }
     @Override public void setPreviousInVariableOrder(@Nullable Node<Integer, Integer> prev) {
       this.prev = prev;
     }
+    @SuppressWarnings("NullAway")
     @Override public Node<Integer, Integer> getNextInVariableOrder() {
       return next;
     }
@@ -142,7 +145,7 @@ public class TimerWheelBenchmark {
     @Override public Object getKeyReference() { throw new UnsupportedOperationException(); }
     @Override public Integer getValue() { throw new UnsupportedOperationException(); }
     @Override public Object getValueReference() { throw new UnsupportedOperationException(); }
-    @Override public void setValue(Integer value, ReferenceQueue<Integer> referenceQueue) {}
+    @Override public void setValue(Integer value, @Nullable ReferenceQueue<Integer> queue) {}
     @Override public boolean containsValue(Object value) { return false; }
     @Override public boolean isAlive() { return false; }
     @Override public boolean isRetired() { return false; }
@@ -155,7 +158,7 @@ public class TimerWheelBenchmark {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     MockCache() {
-      super((Caffeine) Caffeine.newBuilder(), /* cacheLoader */ null, /* isAsync */ false);
+      super((Caffeine) Caffeine.newBuilder(), /* cacheLoader= */ null, /* isAsync= */ false);
     }
 
     @Override

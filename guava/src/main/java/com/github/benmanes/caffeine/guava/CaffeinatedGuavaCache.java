@@ -29,7 +29,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
@@ -40,7 +40,6 @@ import com.google.common.collect.ForwardingSet;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ExecutionError;
 import com.google.common.util.concurrent.UncheckedExecutionException;
-import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 /**
  * A Caffeine-backed cache through a Guava facade.
@@ -58,10 +57,10 @@ class CaffeinatedGuavaCache<K, V> implements Cache<K, V>, Serializable {
     this.cache = requireNonNull(cache);
   }
 
-  @Override @Nullable
-  public V getIfPresent(Object key) {
+  @Override
+  public @Nullable V getIfPresent(Object key) {
     @SuppressWarnings("unchecked")
-    K castedKey = (K) key;
+    var castedKey = (K) key;
     return cache.getIfPresent(castedKey);
   }
 
@@ -115,7 +114,7 @@ class CaffeinatedGuavaCache<K, V> implements Cache<K, V>, Serializable {
   @Override
   public void invalidate(Object key) {
     @SuppressWarnings("unchecked")
-    K castedKey = (K) key;
+    var castedKey = (K) key;
     cache.invalidate(castedKey);
   }
 
@@ -200,6 +199,7 @@ class CaffeinatedGuavaCache<K, V> implements Cache<K, V>, Serializable {
     @Override public boolean removeIf(Predicate<? super K> filter) {
       return delegate().removeIf(filter);
     }
+    @SuppressWarnings("NullAway")
     @Override public boolean remove(Object o) {
       return (o != null) && delegate().remove(o);
     }
@@ -221,6 +221,7 @@ class CaffeinatedGuavaCache<K, V> implements Cache<K, V>, Serializable {
   }
 
   final class EntrySetView extends ForwardingSet<Entry<K, V>> {
+    @SuppressWarnings("NullAway")
     @Override public boolean add(Entry<K, V> entry) {
       throw new UnsupportedOperationException();
     }
@@ -238,13 +239,8 @@ class CaffeinatedGuavaCache<K, V> implements Cache<K, V>, Serializable {
   static final class CacheLoaderException extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
-    CacheLoaderException(Exception e) {
-      super(e);
-    }
-    @CanIgnoreReturnValue
-    @SuppressWarnings({"lgtm [java/non-sync-override]", "UnsynchronizedOverridesSynchronized"})
-    @Override public Throwable fillInStackTrace() {
-      return this;
+    CacheLoaderException(Throwable cause) {
+      super(null, cause, /* enableSuppression= */ false, /* writableStackTrace= */ false);
     }
   }
 }

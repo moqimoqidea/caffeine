@@ -30,7 +30,8 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.AsyncCache;
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
@@ -58,6 +59,7 @@ import com.github.benmanes.caffeine.cache.testing.CacheSpec.Loader;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Maximum;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Population;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.ReferenceType;
+import com.github.benmanes.caffeine.cache.testing.CacheSpec.StartTime;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Stats;
 import com.github.benmanes.caffeine.cache.testing.GuavaCacheFromContext.GuavaLoadingCache;
 import com.github.benmanes.caffeine.cache.testing.GuavaCacheFromContext.SingleLoader;
@@ -92,12 +94,12 @@ public final class CacheContext {
   final TrackingExecutor executor;
   final ReferenceType keyStrength;
   final CacheWeigher cacheWeigher;
-  final Expiry<Int, Int> expiry;
   final Map<Int, Int> original;
   final CacheExpiry expiryType;
   final Population population;
   final Maximum maximumSize;
   final Scheduler scheduler;
+  final StartTime startTime;
   final Expire afterAccess;
   final Expire afterWrite;
   final Expire expiryTime;
@@ -105,6 +107,8 @@ public final class CacheContext {
   final Expire refresh;
   final Loader loader;
   final Stats stats;
+
+  final @Nullable Expiry<Int, Int> expiry;
 
   final boolean isAsyncLoader;
 
@@ -119,17 +123,27 @@ public final class CacheContext {
   long initialSize;
 
   // Generated on-demand
-  Int absentKey;
-  Int absentValue;
+  @Nullable Int absentKey;
+  @Nullable Int absentValue;
+  @Nullable Map<Int, Int> absent;
 
-  Map<Int, Int> absent;
+  /** A copy constructor that does not include the cache instance or any generated fields. */
+  public CacheContext(CacheContext context) {
+    this(context.initialCapacity, context.stats, context.cacheWeigher, context.maximumSize,
+        context.expiryType, context.afterAccess, context.afterWrite, context.refresh,
+        context.keyStrength, context.valueStrength, context.cacheExecutor, context.cacheScheduler,
+        context.removalListenerType, context.evictionListenerType, context.population,
+        context.isAsyncLoader, context.compute, context.loader, context.implementation,
+        context.startTime, context.expiryTime);
+  }
 
+  @SuppressWarnings({"NullAway.Init", "PMD.ExcessiveParameterList", "TooManyParameters"})
   public CacheContext(InitialCapacity initialCapacity, Stats stats, CacheWeigher cacheWeigher,
       Maximum maximumSize, CacheExpiry expiryType, Expire afterAccess, Expire afterWrite,
       Expire refresh, ReferenceType keyStrength, ReferenceType valueStrength,
       CacheExecutor cacheExecutor, CacheScheduler cacheScheduler, Listener removalListenerType,
       Listener evictionListenerType, Population population, boolean isAsyncLoader, Compute compute,
-      Loader loader, Implementation implementation, CacheSpec cacheSpec) {
+      Loader loader, Implementation implementation, StartTime startTime, Expire expiryTime) {
     this.initialCapacity = requireNonNull(initialCapacity);
     this.stats = requireNonNull(stats);
     this.weigher = cacheWeigher.create();
@@ -151,14 +165,15 @@ public final class CacheContext {
     this.population = requireNonNull(population);
     this.loader = requireNonNull(loader);
     this.isAsyncLoader = isAsyncLoader;
-    this.ticker = new SerializableFakeTicker();
     this.implementation = requireNonNull(implementation);
     this.original = new LinkedHashMap<>();
     this.initialSize = -1;
-    this.compute = compute;
-    this.expiryType = expiryType;
-    this.expiryTime = cacheSpec.expiryTime();
-    this.expiry = expiryType.createExpiry(expiryTime);
+    this.compute = requireNonNull(compute);
+    this.expiryType = requireNonNull(expiryType);
+    this.expiryTime = requireNonNull(expiryTime);
+    this.startTime = requireNonNull(startTime);
+    this.ticker = new SerializableFakeTicker(startTime.create());
+    this.expiry = (expiryType == CacheExpiry.DISABLED) ? null : expiryType.createExpiry(expiryTime);
   }
 
   /** Returns a thread local interner for explicit caching. */
@@ -213,16 +228,19 @@ public final class CacheContext {
 
   public Int firstKey() {
     assertWithMessage("Invalid usage of context").that(firstKey).isNotNull();
+    requireNonNull(firstKey);
     return firstKey;
   }
 
   public Int middleKey() {
     assertWithMessage("Invalid usage of context").that(middleKey).isNotNull();
+    requireNonNull(middleKey);
     return middleKey;
   }
 
   public Int lastKey() {
     assertWithMessage("Invalid usage of context").that(lastKey).isNotNull();
+    requireNonNull(lastKey);
     return lastKey;
   }
 
@@ -273,7 +291,7 @@ public final class CacheContext {
     return absent().keySet();
   }
 
-  private Int nextAbsentKey() {
+  private static Int nextAbsentKey() {
     return Int.valueOf(ThreadLocalRandom.current().nextInt(
         (Integer.MAX_VALUE / 2), Integer.MAX_VALUE));
   }
@@ -416,6 +434,7 @@ public final class CacheContext {
     return (expiryType != CacheExpiry.DISABLED);
   }
 
+  @NullUnmarked
   public Expiry<Int, Int> expiry() {
     return expiry;
   }
@@ -441,29 +460,31 @@ public final class CacheContext {
   }
 
   public <K, V> LoadingCache<K, V> build(CacheLoader<K, V> loader) {
-    LoadingCache<K, V> cache;
+    LoadingCache<K, V> loading;
     if (isCaffeine()) {
-      cache = isAsync() ? caffeine.buildAsync(loader).synchronous() : caffeine.build(loader);
+      loading = isAsync() ? caffeine.buildAsync(loader).synchronous() : caffeine.build(loader);
     } else {
       var guavaLoader = new SingleLoader<>(loader);
-      cache = new GuavaLoadingCache<>(guava.build(asyncReloading(guavaLoader, executor)), this);
+      loading = new GuavaLoadingCache<>(guava.build(asyncReloading(guavaLoader, executor)), this);
     }
-    this.cache = cache;
-    return cache;
+    this.cache = loading;
+    return loading;
   }
 
   public <K, V> AsyncLoadingCache<K, V> buildAsync(CacheLoader<K, V> loader) {
     checkState(isCaffeine() && isAsync());
-    AsyncLoadingCache<K, V> cache = caffeine.buildAsync(loader);
-    this.cache = cache.synchronous();
-    return cache;
+    AsyncLoadingCache<K, V> async = caffeine.buildAsync(loader);
+    this.cache = asyncCache.synchronous();
+    this.asyncCache = async;
+    return async;
   }
 
   public <K, V> AsyncLoadingCache<K, V> buildAsync(AsyncCacheLoader<K, V> loader) {
     checkState(isCaffeine() && isAsync());
-    AsyncLoadingCache<K, V> cache = caffeine.buildAsync(loader);
-    this.cache = cache.synchronous();
-    return cache;
+    AsyncLoadingCache<K, V> async = caffeine.buildAsync(loader);
+    this.cache = asyncCache.synchronous();
+    this.asyncCache = async;
+    return async;
   }
 
   public boolean isCaffeine() {
@@ -518,9 +539,9 @@ public final class CacheContext {
 
     final long startTime;
 
-    public SerializableFakeTicker() {
-      startTime = ThreadLocalRandom.current().nextLong(Long.MIN_VALUE, Long.MAX_VALUE);
+    public SerializableFakeTicker(long startTime) {
       advance(Duration.ofNanos(startTime));
+      this.startTime = startTime;
     }
   }
 }

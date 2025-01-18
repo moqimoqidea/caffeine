@@ -28,14 +28,14 @@ import org.openjdk.jmh.annotations.TearDown;
  * a 100% eviction rate to mimic worst case behavior.
  * <p>
  * <pre>{@code
- *   ./gradlew jmh -PincludePattern=EvictionBenchmark
+ *   ./gradlew jmh -PincludePattern=EvictionBenchmark --rerun
  * }</pre>
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
 @State(Scope.Benchmark)
 @SuppressWarnings({"CanonicalAnnotationSyntax", "LexicographicalAnnotationAttributeListing",
-  "PMD.JUnit4TestShouldUseAfterAnnotation"})
+  "PMD.UnitTestShouldUseAfterAnnotation"})
 public class EvictionBenchmark {
 
   @Param({

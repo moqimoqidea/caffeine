@@ -19,6 +19,8 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Charact
 
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
@@ -42,9 +44,9 @@ public final class CaffeinePolicy implements Policy {
 
   public CaffeinePolicy(Config config, Set<Characteristic> characteristics) {
     policyStats = new PolicyStats(name());
-    BasicSettings settings = new BasicSettings(config);
+    var settings = new BasicSettings(config);
     Caffeine<Long, AccessEvent> builder = Caffeine.newBuilder()
-        .removalListener((Long key, AccessEvent value, RemovalCause cause) ->
+        .removalListener((@Nullable Long key, @Nullable AccessEvent value, RemovalCause cause) ->
             policyStats.recordEviction())
         .executor(Runnable::run);
     if (characteristics.contains(WEIGHTED)) {

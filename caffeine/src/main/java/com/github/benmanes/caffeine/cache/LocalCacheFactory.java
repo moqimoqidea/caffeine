@@ -21,7 +21,9 @@ import java.lang.invoke.MethodType;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
+
+import com.google.errorprone.annotations.Var;
 
 /**
  * A factory for caches optimized for a particular configuration.
@@ -37,15 +39,15 @@ interface LocalCacheFactory {
 
   /** Returns a cache optimized for this configuration. */
   <K, V> BoundedLocalCache<K, V> newInstance(Caffeine<K, V> builder,
-      @Nullable AsyncCacheLoader<? super K, V> cacheLoader, boolean async) throws Throwable;
+      @Nullable AsyncCacheLoader<? super K, V> cacheLoader, boolean isAsync) throws Throwable;
 
   /** Returns a cache optimized for this configuration. */
   static <K, V> BoundedLocalCache<K, V> newBoundedLocalCache(Caffeine<K, V> builder,
-      @Nullable AsyncCacheLoader<? super K, V> cacheLoader, boolean async) {
+      @Nullable AsyncCacheLoader<? super K, V> cacheLoader, boolean isAsync) {
     var className = getClassName(builder);
     var factory = loadFactory(className);
     try {
-      return factory.newInstance(builder, cacheLoader, async);
+      return factory.newInstance(builder, cacheLoader, isAsync);
     } catch (RuntimeException | Error e) {
       throw e;
     } catch (Throwable t) {
@@ -92,7 +94,7 @@ interface LocalCacheFactory {
   }
 
   static LocalCacheFactory loadFactory(String className) {
-    var factory = FACTORIES.get(className);
+    @Var var factory = FACTORIES.get(className);
     if (factory == null) {
       factory = FACTORIES.computeIfAbsent(className, LocalCacheFactory::newFactory);
     }
@@ -121,8 +123,7 @@ interface LocalCacheFactory {
     MethodHandleBasedFactory(Class<?> clazz) throws NoSuchMethodException, IllegalAccessException {
       this.methodHandle = LOOKUP.findConstructor(clazz, FACTORY).asType(FACTORY_CALL);
     }
-    
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"ClassEscapesDefinedScope", "unchecked"})
     @Override public <K, V> BoundedLocalCache<K, V> newInstance(Caffeine<K, V> builder,
         @Nullable AsyncCacheLoader<? super K, V> cacheLoader, boolean async) throws Throwable {
       return (BoundedLocalCache<K, V>) methodHandle.invokeExact(builder, cacheLoader, async);

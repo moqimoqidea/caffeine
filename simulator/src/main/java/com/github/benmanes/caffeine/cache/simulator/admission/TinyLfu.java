@@ -15,6 +15,10 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.admission;
 
+import static java.util.Locale.US;
+
+import java.util.Random;
+
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor.KeyOnlyAdmittor;
 import com.github.benmanes.caffeine.cache.simulator.admission.countmin4.ClimberResetCountMin4;
@@ -36,36 +40,23 @@ import com.typesafe.config.Config;
 public final class TinyLfu implements KeyOnlyAdmittor {
   private final PolicyStats policyStats;
   private final Frequency sketch;
+  private final Random random;
+
+  private final double probability;
+  private final int threshold;
 
   public TinyLfu(Config config, PolicyStats policyStats) {
+    var settings = new BasicSettings(config);
+    this.random = new Random(settings.randomSeed());
+    this.sketch = makeSketch(settings);
     this.policyStats = policyStats;
-    this.sketch = makeSketch(config);
-  }
-
-  private Frequency makeSketch(Config config) {
-    BasicSettings settings = new BasicSettings(config);
-    String type = settings.tinyLfu().sketch();
-    if (type.equalsIgnoreCase("count-min-4")) {
-      String reset = settings.tinyLfu().countMin4().reset();
-      if (reset.equalsIgnoreCase("periodic")) {
-        return new PeriodicResetCountMin4(config);
-      } else if (reset.equalsIgnoreCase("incremental")) {
-        return new IncrementalResetCountMin4(config);
-      } else if (reset.equalsIgnoreCase("climber")) {
-        return new ClimberResetCountMin4(config);
-      } else if (reset.equalsIgnoreCase("indicator")) {
-        return new IndicatorResetCountMin4(config);
-      }
-    } else if (type.equalsIgnoreCase("count-min-64")) {
-      return new CountMin64TinyLfu(config);
-    } else if (type.equalsIgnoreCase("random-table")) {
-      return new RandomRemovalFrequencyTable(config);
-    } else if (type.equalsIgnoreCase("tiny-table")) {
-      return new TinyCacheAdapter(config);
-    } else if (type.equalsIgnoreCase("perfect-table")) {
-      return new PerfectFrequency(config);
+    if (settings.tinyLfu().jitter().enabled()) {
+      this.threshold = settings.tinyLfu().jitter().threshold();
+      this.probability = settings.tinyLfu().jitter().probability();
+    } else {
+      this.threshold = Integer.MAX_VALUE;
+      this.probability = 1.0;
     }
-    throw new IllegalStateException("Unknown sketch type: " + type);
   }
 
   public int frequency(long key) {
@@ -81,13 +72,36 @@ public final class TinyLfu implements KeyOnlyAdmittor {
   public boolean admit(long candidateKey, long victimKey) {
     sketch.reportMiss();
 
-    long candidateFreq = sketch.frequency(candidateKey);
-    long victimFreq = sketch.frequency(victimKey);
-    if (candidateFreq > victimFreq) {
+    int victimFreq = sketch.frequency(victimKey);
+    int candidateFreq = sketch.frequency(candidateKey);
+    if ((candidateFreq > victimFreq)
+        || ((candidateFreq >= threshold) && (random.nextFloat() < probability))) {
       policyStats.recordAdmission();
       return true;
     }
     policyStats.recordRejection();
     return false;
+  }
+
+  /** Returns the frequency histogram. */
+  private static Frequency makeSketch(BasicSettings settings) {
+    String type = settings.tinyLfu().sketch();
+    switch (type.toLowerCase(US)) {
+      case "count-min-4": {
+        String reset = settings.tinyLfu().countMin4().reset();
+        switch (reset.toLowerCase(US)) {
+          case "climber": return new ClimberResetCountMin4(settings.config());
+          case "periodic": return new PeriodicResetCountMin4(settings.config());
+          case "indicator": return new IndicatorResetCountMin4(settings.config());
+          case "incremental": return new IncrementalResetCountMin4(settings.config());
+          default: throw new IllegalStateException("Unknown reset type: " + reset);
+        }
+      }
+      case "tiny-table": return new TinyCacheAdapter(settings.config());
+      case "count-min-64": return new CountMin64TinyLfu(settings.config());
+      case "perfect-table": return new PerfectFrequency(settings.config());
+      case "random-table": return new RandomRemovalFrequencyTable(settings.config());
+      default: throw new IllegalStateException("Unknown sketch type: " + type);
+    }
   }
 }

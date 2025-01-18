@@ -16,6 +16,7 @@
 package com.github.benmanes.caffeine.cache.simulator.admission.tinycache;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.Var;
 
 /**
  * This is a hash function and parser tp simplify parsing the hash value, it split it to . This
@@ -23,7 +24,8 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
  *
  * @author gilga1983@gmail.com (Gil Einziger)
  */
-public final class HashFunctionParser {
+@SuppressWarnings("MemberName")
+final class HashFunctionParser {
   // currently, chain is bounded to be 64.
   private static final int fpSize = 8; // this implementation assumes byte.
   private static final byte fpMask = (byte) 255; // (all bits in byte are 1, (logical value of -1));
@@ -32,7 +34,7 @@ public final class HashFunctionParser {
   private static final long Seed64 = 0xe17a1465L;
   private static final int r = 47;
 
-  public final HashedItem fpaux; // used just to avoid allocating new memory as a return value.
+  final HashedItem fpaux; // used just to avoid allocating new memory as a return value.
 
   private final int nrSets;
 
@@ -42,8 +44,8 @@ public final class HashFunctionParser {
   }
 
   @CanIgnoreReturnValue
-  public HashedItem createHash(long item) {
-    long h = (Seed64 ^ m);
+  public HashedItem createHash(@Var long item) {
+    @Var long h = (Seed64 ^ m);
     item *= m;
     item ^= item >>> r;
     item *= m;

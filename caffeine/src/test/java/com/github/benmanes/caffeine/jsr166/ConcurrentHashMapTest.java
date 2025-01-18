@@ -24,11 +24,12 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 
 import junit.framework.Test;
 
-@SuppressWarnings({"ForEachIterable", "ModifyCollectionInEnhancedForLoop", "PreferredInterfaceType",
-  "rawtypes", "ReturnValueIgnored", "unchecked", "UnnecessaryParentheses"})
+@SuppressWarnings({"EmptyCatch", "ForEachIterable", "MemberName",
+  "ModifyCollectionInEnhancedForLoop", "PreferredInterfaceType", "rawtypes",
+  "ReturnValueIgnored", "unchecked", "UnnecessaryFinal", "UnnecessaryParentheses"})
 public class ConcurrentHashMapTest extends JSR166TestCase {
     public static void main(String[] args) {
-        main(suite(), args);
+        main(suite());
     }
     public static Test suite() {
         class Implementation implements MapImplementation {
@@ -51,8 +52,8 @@ public class ConcurrentHashMapTest extends JSR166TestCase {
         }
         return newTestSuite(
             ConcurrentHashMapTest.class,
-            MapTest.testSuite(new Implementation(false)),
-            MapTest.testSuite(new Implementation(true)));
+            MapTest.testSuite(new Implementation(/* bounded= */ false)),
+            MapTest.testSuite(new Implementation(/* bounded= */ true)));
     }
 
     private static <K, V> ConcurrentMap<K, V> unbounded() {
@@ -209,6 +210,7 @@ public class ConcurrentHashMapTest extends JSR166TestCase {
         }
 
         for (int i = 0; i < size; i++) {
+            @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
             LexicographicList<BI> bis = new LexicographicList<>(new BI(i));
             assertTrue(m.containsKey(bis));
         }
@@ -877,6 +879,7 @@ public class ConcurrentHashMapTest extends JSR166TestCase {
         mustEqual(mapSize, map.size());
     }
 
+    @SuppressWarnings("TryFailRefactoring")
     public void testReentrantComputeIfAbsent() {
         if (Runtime.version().feature() < 14) {
           return;

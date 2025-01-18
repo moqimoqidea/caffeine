@@ -8,7 +8,7 @@ plugins {
 }
 
 dependencies {
-  annotationProcessor(libs.hibernate.jpamodelgen)
+  annotationProcessor(libs.hibernate.processor)
 
   implementation(libs.bundles.hibernate)
   implementation(libs.bundles.log4j2)
@@ -22,15 +22,6 @@ dependencies {
 testing.suites {
   val test by getting(JvmTestSuite::class) {
     useJUnitJupiter()
-  }
-}
-
-java.toolchain.languageVersion = JavaLanguageVersion.of(
-  System.getenv("JAVA_VERSION")?.toIntOrNull() ?: 11)
-
-tasks.withType<JavaCompile>().configureEach {
-  javaCompiler = javaToolchains.compilerFor {
-    languageVersion = java.toolchain.languageVersion
   }
 }
 

@@ -20,23 +20,30 @@ import static com.github.benmanes.caffeine.cache.RemovalCause.REPLACED;
 import static com.github.benmanes.caffeine.cache.testing.CacheContext.intern;
 import static com.github.benmanes.caffeine.cache.testing.CacheContextSubject.assertThat;
 import static com.github.benmanes.caffeine.cache.testing.CacheSubject.assertThat;
+import static com.github.benmanes.caffeine.testing.LoggingEvents.logEvents;
 import static com.github.benmanes.caffeine.testing.MapSubject.assertThat;
-import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
+import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.slf4j.event.Level.ERROR;
 import static org.slf4j.event.Level.WARN;
 
+import java.io.IOException;
 import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -49,6 +56,8 @@ import java.util.function.Function;
 import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.tuple.Triple;
+import org.jspecify.annotations.Nullable;
+import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
@@ -67,17 +76,19 @@ import com.github.benmanes.caffeine.cache.testing.CacheContext;
 import com.github.benmanes.caffeine.cache.testing.CacheProvider;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.CacheExecutor;
+import com.github.benmanes.caffeine.cache.testing.CacheSpec.CacheExpiry;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Compute;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.ExecutorFailure;
+import com.github.benmanes.caffeine.cache.testing.CacheSpec.Expire;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Implementation;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Listener;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Population;
+import com.github.benmanes.caffeine.cache.testing.CacheSpec.Stats;
 import com.github.benmanes.caffeine.cache.testing.CacheValidationListener;
 import com.github.benmanes.caffeine.cache.testing.CheckMaxLogLevel;
 import com.github.benmanes.caffeine.cache.testing.CheckNoEvictions;
 import com.github.benmanes.caffeine.cache.testing.CheckNoStats;
 import com.github.benmanes.caffeine.testing.Int;
-import com.github.valfirst.slf4jtest.TestLoggerFactory;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
@@ -111,6 +122,7 @@ public final class CacheTest {
   /* --------------- getIfPresent --------------- */
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void getIfPresent_nullKey(Cache<Int, Int> cache, CacheContext context) {
@@ -138,6 +150,7 @@ public final class CacheTest {
 
   @CacheSpec
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   public void get_nullKey(Cache<Int, Int> cache, CacheContext context) {
     assertThrows(NullPointerException.class, () -> cache.get(null, identity()));
@@ -145,6 +158,7 @@ public final class CacheTest {
 
   @CacheSpec
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   public void get_nullLoader(Cache<Int, Int> cache, CacheContext context) {
     assertThrows(NullPointerException.class, () -> cache.get(context.absentKey(), null));
@@ -152,12 +166,14 @@ public final class CacheTest {
 
   @CacheSpec
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   public void get_nullKeyAndLoader(Cache<Int, Int> cache, CacheContext context) {
     assertThrows(NullPointerException.class, () -> cache.get(null, null));
   }
 
   @CacheSpec
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   public void get_absent_null(Cache<Int, Int> cache, CacheContext context) {
     assertThat(cache.get(context.absentKey(), k -> null)).isNull();
@@ -166,7 +182,20 @@ public final class CacheTest {
 
   @CacheSpec
   @Test(dataProvider = "caches")
-  public void get_absent_throwsException(Cache<Int, Int> cache, CacheContext context) {
+  public void get_absent_throwsCheckedException(Cache<Int, Int> cache, CacheContext context) {
+    var error = assertThrows(Exception.class, () ->
+        cache.get(context.absentKey(), key -> { throw uncheckedThrow(new IOException()); }));
+    if (context.isSync() && context.isCaffeine()) {
+      assertThat(error).isInstanceOf(IOException.class);
+    } else {
+      assertThat(error).hasCauseThat().isInstanceOf(IOException.class);
+    }
+    assertThat(context).stats().hits(0).misses(1).success(0).failures(1);
+  }
+
+  @CacheSpec
+  @Test(dataProvider = "caches")
+  public void get_absent_throwsRuntimeException(Cache<Int, Int> cache, CacheContext context) {
     assertThrows(IllegalStateException.class, () ->
         cache.get(context.absentKey(), key -> { throw new IllegalStateException(); }));
     assertThat(context).stats().hits(0).misses(1).success(0).failures(1);
@@ -205,6 +234,7 @@ public final class CacheTest {
   /* --------------- getAllPresent --------------- */
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void getAllPresent_iterable_null(Cache<Int, Int> cache, CacheContext context) {
@@ -282,7 +312,8 @@ public final class CacheTest {
         context.original().keySet(), context.original().keySet());
     var result = cache.getAllPresent(keys);
 
-    long hits, misses;
+    long hits;
+    long misses;
     if (context.isGuava()) {
       // Guava does not skip duplicates
       hits = 2L * context.initialSize();
@@ -309,18 +340,19 @@ public final class CacheTest {
   @Test(dataProvider = "caches")
   @CacheSpec(population = Population.EMPTY)
   public void getAllPresent_jdk8186171(Cache<Object, Int> cache, CacheContext context) {
-    class Key {
+    @SuppressWarnings("PMD.OverrideBothEqualsAndHashcode")
+    final class Key {
       @Override public int hashCode() {
         return 0; // to put keys in one bucket
       }
     }
 
     var keys = intern(new ArrayList<Key>());
-    for (int i = 0; i < Population.FULL.size(); i++) {
+    for (int i = 0; i < Math.toIntExact(Population.FULL.size()); i++) {
       keys.add(new Key());
     }
 
-    Key key = Iterables.getLast(keys);
+    Key key = requireNonNull(Iterables.getLast(keys));
     Int value = context.absentValue();
     cache.put(key, value);
 
@@ -330,6 +362,7 @@ public final class CacheTest {
 
   /* --------------- getAll --------------- */
 
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void getAll_iterable_null(Cache<Int, Int> cache, CacheContext context) {
@@ -353,12 +386,14 @@ public final class CacheTest {
     assertThat(context).stats().hits(0).misses(0);
   }
 
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void getAll_function_null(Cache<Int, Int> cache, CacheContext context) {
     assertThrows(NullPointerException.class, () -> cache.getAll(context.absentKeys(), null));
   }
 
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void getAll_function_nullValue(Cache<Int, Int> cache, CacheContext context) {
@@ -396,7 +431,22 @@ public final class CacheTest {
 
   @CacheSpec
   @Test(dataProvider = "caches")
-  public void getAll_absent_throwsException(Cache<Int, Int> cache, CacheContext context) {
+  public void getAll_absent_throwsCheckedException(Cache<Int, Int> cache, CacheContext context) {
+    var error = assertThrows(Exception.class, () ->
+        cache.getAll(context.absentKeys(), keys -> { throw uncheckedThrow(new IOException()); }));
+    if (context.isSync()) {
+      assertThat(error).isInstanceOf(IOException.class);
+    } else {
+      assertThat(error).hasCauseThat().isInstanceOf(IOException.class);
+    }
+
+    int misses = context.absentKeys().size();
+    assertThat(context).stats().hits(0).misses(misses).success(0).failures(1);
+  }
+
+  @CacheSpec
+  @Test(dataProvider = "caches")
+  public void getAll_absent_throwsRuntimeException(Cache<Int, Int> cache, CacheContext context) {
     assertThrows(IllegalStateException.class, () ->
         cache.getAll(context.absentKeys(), keys -> { throw new IllegalStateException(); }));
     int misses = context.absentKeys().size();
@@ -405,7 +455,7 @@ public final class CacheTest {
 
   @CacheSpec
   @Test(dataProvider = "caches")
-  public void getAll_function_throwsError(Cache<Int, Int> cache, CacheContext context) {
+  public void getAll_absent_throwsError(Cache<Int, Int> cache, CacheContext context) {
     assertThrows(UnknownError.class, () ->
         cache.getAll(context.absentKeys(), keys -> { throw new UnknownError(); }));
     int misses = context.absentKeys().size();
@@ -453,7 +503,7 @@ public final class CacheTest {
     var expected = new ImmutableMap.Builder<Int, Int>()
         .putAll(context.original())
         .putAll(context.absent())
-        .build();
+        .buildOrThrow();
     assertThat(cache).containsExactlyEntriesIn(expected);
     assertThat(context).stats().hits(0).misses(result.size()).success(1).failures(0);
     assertThat(result).containsExactlyEntriesIn(Map.of(context.absentKey(), context.absentValue()));
@@ -482,7 +532,8 @@ public final class CacheTest {
     var result = cache.getAll(keys, bulkMappingFunction());
     assertThat(result).containsExactlyKeys(keys);
 
-    long hits, misses;
+    long hits;
+    long misses;
     if (context.isGuava()) {
       // Guava does not skip duplicates
       hits = 2L * context.initialSize();
@@ -542,18 +593,20 @@ public final class CacheTest {
   @Test(dataProvider = "caches")
   @CacheSpec(population = Population.EMPTY)
   public void getAll_jdk8186171(CacheContext context) {
-    class Key {
+    @SuppressWarnings("PMD.OverrideBothEqualsAndHashcode")
+    final class Key {
       @Override public int hashCode() {
         return 0; // to put keys in one bucket
       }
     }
+    @SuppressWarnings("NullAway")
     Cache<Object, Int> cache = context.build(key -> null);
 
     var keys = new ArrayList<Key>();
-    for (int i = 0; i < Population.FULL.size(); i++) {
+    for (int i = 0; i < Math.toIntExact(Population.FULL.size()); i++) {
       keys.add(intern(new Key()));
     }
-    Key key = Iterables.getLast(keys);
+    Key key = requireNonNull(Iterables.getLast(keys));
     Int value = context.absentValue();
     cache.put(key, value);
 
@@ -601,7 +654,7 @@ public final class CacheTest {
   public void put_replace_sameInstance(Cache<Int, Int> cache, CacheContext context) {
     var replaced = new HashMap<Int, Int>();
     for (Int key : context.firstMiddleLastKeys()) {
-      Int value = context.original().get(key);
+      Int value = requireNonNull(context.original().get(key));
       cache.put(key, value);
       assertThat(cache).containsEntry(key, value);
       replaced.put(key, value);
@@ -631,6 +684,7 @@ public final class CacheTest {
   }
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void put_nullKey(Cache<Int, Int> cache, CacheContext context) {
@@ -638,6 +692,7 @@ public final class CacheTest {
   }
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void put_nullValue(Cache<Int, Int> cache, CacheContext context) {
@@ -645,6 +700,7 @@ public final class CacheTest {
   }
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void put_nullKeyAndValue(Cache<Int, Int> cache, CacheContext context) {
@@ -708,6 +764,7 @@ public final class CacheTest {
   }
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void putAll_null(Cache<Int, Int> cache, CacheContext context) {
@@ -739,6 +796,7 @@ public final class CacheTest {
   }
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void invalidate_nullKey(Cache<Int, Int> cache, CacheContext context) {
@@ -786,6 +844,7 @@ public final class CacheTest {
 
   @CacheSpec
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   public void invalidateAll_null(Cache<Int, Int> cache, CacheContext context) {
     assertThrows(NullPointerException.class, () -> cache.invalidateAll(null));
@@ -818,7 +877,7 @@ public final class CacheTest {
     cache.invalidateAll();
     assertThat(context).removalNotifications().withCause(EXPLICIT)
         .contains(context.original()).exclusively();
-    assertThat(cache).containsExactlyEntriesIn(Maps.asMap(context.original().keySet(), key -> key));
+    assertThat(cache).containsExactlyEntriesIn(Maps.toMap(context.original().keySet(), key -> key));
   }
 
   /* --------------- cleanup --------------- */
@@ -826,7 +885,7 @@ public final class CacheTest {
   @CacheSpec
   @CheckNoStats
   @Test(dataProvider = "caches")
-  public void cleanup(Cache<Int, Int> cache, CacheContext context) {
+  public void cleanUp(Cache<Int, Int> cache, CacheContext context) {
     cache.cleanUp();
   }
 
@@ -836,11 +895,12 @@ public final class CacheTest {
   @CacheSpec(population = Population.SINGLETON, removalListener = Listener.REJECTING)
   public void removalListener_error_log(Cache<Int, Int> cache, CacheContext context) {
     cache.invalidateAll();
-
-    var event = Iterables.getOnlyElement(TestLoggerFactory.getLoggingEvents());
-    assertThat(event.getLevel()).isEqualTo(WARN);
-    assertThat(event.getFormattedMessage()).isEqualTo("Exception thrown by removal listener");
-    assertThat(event.getThrowable().orElseThrow()).isInstanceOf(RejectedExecutionException.class);
+    assertThat(logEvents()
+        .withMessage("Exception thrown by removal listener")
+        .withThrowable(RejectedExecutionException.class)
+        .withLevel(WARN)
+        .exclusively())
+        .hasSize(1);
   }
 
   @CheckMaxLogLevel(ERROR)
@@ -850,13 +910,45 @@ public final class CacheTest {
       removalListener = Listener.CONSUMING)
   public void removalListener_submit_error_log(Cache<Int, Int> cache, CacheContext context) {
     cache.invalidateAll();
+    assertThat(logEvents()
+        .withMessage("Exception thrown when submitting removal listener")
+        .withThrowable(RejectedExecutionException.class)
+        .withLevel(ERROR)
+        .exclusively())
+        .hasSize(1);
+  }
 
-    var event = Iterables.getOnlyElement(TestLoggerFactory.getLoggingEvents().stream()
-        .filter(e -> e.getLevel() == ERROR)
-        .collect(toImmutableList()));
-    assertThat(event.getFormattedMessage()).isEqualTo(
-        "Exception thrown when submitting removal listener");
-    assertThat(event.getThrowable().orElseThrow()).isInstanceOf(RejectedExecutionException.class);
+  @CheckNoStats
+  @SuppressWarnings("NullAway")
+  @Test(dataProvider = "caches")
+  @CacheSpec(population = Population.EMPTY, refreshAfterWrite = Expire.DISABLED,
+      expireAfterAccess = Expire.DISABLED, expireAfterWrite = Expire.DISABLED,
+      expiry = CacheExpiry.DISABLED, stats = Stats.DISABLED)
+  public void ticker_noStats(CacheContext context) {
+    var caffeineTicker = Mockito.mock(Ticker.class);
+    var guavaTicker = Mockito.mock(com.google.common.base.Ticker.class);
+    when(guavaTicker.read()).thenAnswer(invocation -> context.ticker().read());
+    when(caffeineTicker.read()).thenAnswer(invocation -> context.ticker().read());
+    context.ticker().setAutoIncrementStep(Duration.ofSeconds(1));
+
+    if (context.isGuava()) {
+      context.guava().ticker(guavaTicker);
+    } else {
+      context.caffeine().ticker(caffeineTicker);
+    }
+
+    Cache<Int, Int> cache = context.build(key -> key);
+    assertThat(cache.getIfPresent(context.absentKey())).isNull();
+    assertThat(cache.get(context.absentKey(), key -> null)).isNull();
+    assertThat(cache.get(context.absentKey(), key -> key)).isNotNull();
+    assertThat(cache.getIfPresent(context.absentKey())).isNotNull();
+
+    if (context.isGuava()) {
+      // Used for expiration timestamp and ignored
+      verify(guavaTicker, times(4)).read();
+    } else {
+      verifyNoInteractions(caffeineTicker);
+    }
   }
 
   /* --------------- serialize --------------- */
@@ -870,6 +962,7 @@ public final class CacheTest {
 
   @CheckNoStats
   @Test(dataProvider = "caches")
+  @SuppressWarnings("PMD.AvoidAccessibilityAlteration")
   @CacheSpec(implementation = Implementation.Caffeine, population = Population.EMPTY)
   public void readObject(CacheContext context) throws NoSuchMethodException {
     var cache = context.isAsync() ? context.asyncCache() : context.cache();
@@ -912,7 +1005,7 @@ public final class CacheTest {
     }
   }
 
-  private void checkNullPointer(Object o) {
+  private void checkNullPointer(@Nullable Object o) {
     if (o == null) {
       return;
     }
@@ -922,7 +1015,7 @@ public final class CacheTest {
         .forEach(method -> npeTester.testMethod(o, method));
   }
 
-  private ImmutableSetMultimap<Class<?>, Method> getPublicMethods() {
+  private static ImmutableSetMultimap<Class<?>, Method> getPublicMethods() {
     var classes = List.of(Cache.class, LoadingCache.class, AsyncCache.class,
         AsyncLoadingCache.class, CacheStats.class, Policy.class, Eviction.class,
         FixedRefresh.class, FixedExpiration.class, VarExpiration.class, Map.class,
@@ -965,6 +1058,7 @@ public final class CacheTest {
   /* --------------- Policy: getIfPresentQuietly --------------- */
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void getIfPresentQuietly_nullKey(Cache<Int, Int> cache, CacheContext context) {
@@ -991,6 +1085,7 @@ public final class CacheTest {
   /* --------------- Policy: getEntryIfPresentQuietly --------------- */
 
   @CheckNoStats
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "caches")
   @CacheSpec(removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void getEntryIfPresentQuietly_nullKey(Cache<Int, Int> cache, CacheContext context) {
@@ -1010,7 +1105,7 @@ public final class CacheTest {
       removalListener = { Listener.DISABLED, Listener.REJECTING })
   public void getEntryIfPresentQuietly_present(Cache<Int, Int> cache, CacheContext context) {
     for (Int key : context.firstMiddleLastKeys()) {
-      var entry = cache.policy().getEntryIfPresentQuietly(key);
+      var entry = requireNonNull(cache.policy().getEntryIfPresentQuietly(key));
       assertThat(context).containsEntry(entry);
     }
   }
@@ -1073,5 +1168,10 @@ public final class CacheTest {
       tester.addEqualityGroup(group.toArray());
     }
     tester.testEquals();
+  }
+
+  @SuppressWarnings({"TypeParameterUnusedInFormals", "unchecked"})
+  static <E extends Throwable> E uncheckedThrow(Throwable throwable) throws E {
+    throw (E) throwable;
   }
 }

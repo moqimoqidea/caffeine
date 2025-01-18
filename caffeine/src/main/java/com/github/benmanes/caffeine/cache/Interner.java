@@ -21,6 +21,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import org.jspecify.annotations.NullMarked;
+
 import com.github.benmanes.caffeine.cache.References.LookupKeyEqualsReference;
 import com.github.benmanes.caffeine.cache.References.WeakKeyEqualsReference;
 
@@ -34,6 +36,7 @@ import com.github.benmanes.caffeine.cache.References.WeakKeyEqualsReference;
  * @param <E> the type of elements
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@NullMarked
 @FunctionalInterface
 public interface Interner<E> {
 
@@ -153,7 +156,7 @@ final class Interned<K, V> extends Node<K, V> implements NodeFactory<K, V> {
     return new LookupKeyEqualsReference<>(key);
   }
   @Override public Object newReferenceKey(K key, ReferenceQueue<K> referenceQueue) {
-    return new WeakKeyEqualsReference<K>(key, referenceQueue);
+    return new WeakKeyEqualsReference<>(key, referenceQueue);
   }
   @Override public boolean isAlive() {
     Object keyRef = keyReference;

@@ -18,12 +18,13 @@ package com.github.benmanes.caffeine.cache;
 import static com.github.benmanes.caffeine.testing.Awaits.await;
 import static com.github.benmanes.caffeine.testing.ConcurrentTestHarness.executor;
 import static com.github.benmanes.caffeine.testing.ConcurrentTestHarness.scheduledExecutor;
+import static com.github.benmanes.caffeine.testing.LoggingEvents.logEvents;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.util.concurrent.testing.TestingExecutors.sameThreadScheduledExecutor;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -34,9 +35,11 @@ import static org.slf4j.event.Level.WARN;
 
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -48,7 +51,6 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import com.github.valfirst.slf4jtest.TestLoggerFactory;
-import com.google.common.collect.Iterables;
 import com.google.common.testing.NullPointerTester;
 import com.google.common.util.concurrent.Futures;
 
@@ -80,11 +82,12 @@ public final class SchedulerTest {
     await().untilAtomic(thread, is(not(nullValue())));
 
     if (thread.get() == Thread.currentThread()) {
-      var event = Iterables.getOnlyElement(TestLoggerFactory.getLoggingEvents());
-      assertThat(event.getFormattedMessage())
-          .isEqualTo("Exception thrown when submitting scheduled task");
-      assertThat(event.getThrowable().orElseThrow()).isInstanceOf(IllegalStateException.class);
-      assertThat(event.getLevel()).isEqualTo(WARN);
+      assertThat(logEvents()
+          .withMessage("Exception thrown when submitting scheduled task")
+          .withThrowable(IllegalStateException.class)
+          .withLevel(WARN)
+          .exclusively())
+          .hasSize(1);
     }
   }
 
@@ -103,41 +106,44 @@ public final class SchedulerTest {
   public void disabledScheduler() {
     var future = Scheduler.disabledScheduler()
         .schedule(Runnable::run, () -> {}, 1, TimeUnit.MINUTES);
-    assertThat(future).isSameInstanceAs(DisabledFuture.INSTANCE);
+    assertThat(future).isSameInstanceAs(DisabledFuture.instance());
   }
 
   @Test
-  public void disabledFuture() {
-    assertThat(DisabledFuture.INSTANCE.get(0, TimeUnit.SECONDS)).isNull();
-    assertThat(DisabledFuture.INSTANCE.isCancelled()).isFalse();
-    assertThat(DisabledFuture.INSTANCE.cancel(false)).isFalse();
-    assertThat(DisabledFuture.INSTANCE.cancel(true)).isFalse();
-    assertThat(DisabledFuture.INSTANCE.isDone()).isTrue();
-    assertThat(DisabledFuture.INSTANCE.get()).isNull();
+  public void disabledFuture() throws InterruptedException, ExecutionException, TimeoutException {
+    assertThat(DisabledFuture.instance().get(0, TimeUnit.SECONDS)).isNull();
+    assertThat(DisabledFuture.instance().isCancelled()).isFalse();
+    assertThat(DisabledFuture.instance().cancel(false)).isFalse();
+    assertThat(DisabledFuture.instance().cancel(true)).isFalse();
+    assertThat(DisabledFuture.instance().isDone()).isTrue();
+    assertThat(DisabledFuture.instance().get()).isNull();
   }
 
   @Test
   public void disabledFuture_null() {
-    npeTester.testAllPublicInstanceMethods(DisabledFuture.INSTANCE);
+    npeTester.testAllPublicInstanceMethods(DisabledFuture.instance());
   }
 
   /* --------------- guarded --------------- */
 
+  @Test
+  @SuppressWarnings("NullAway")
   public void guardedScheduler_null() {
     assertThrows(NullPointerException.class, () -> Scheduler.guardedScheduler(null));
   }
 
   @Test
   public void guardedScheduler_nullFuture() {
-    var scheduledExecutor = Mockito.mock(ScheduledExecutorService.class);
+    @SuppressWarnings("PMD.CloseResource")
+    ScheduledExecutorService scheduledExecutor = Mockito.mock();
     var scheduler = Scheduler.forScheduledExecutorService(scheduledExecutor);
-    var executor = Mockito.mock(Executor.class);
+    Executor executor = Mockito.mock();
     Runnable command = () -> {};
 
     var future = Scheduler.guardedScheduler(scheduler)
         .schedule(executor, command, 1L, TimeUnit.MINUTES);
     verify(scheduledExecutor).schedule(any(Runnable.class), eq(1L), eq(TimeUnit.MINUTES));
-    assertThat(future).isSameInstanceAs(DisabledFuture.INSTANCE);
+    assertThat(future).isSameInstanceAs(DisabledFuture.instance());
   }
 
   @Test
@@ -151,32 +157,34 @@ public final class SchedulerTest {
   public void guardedScheduler_exception() {
     var future = Scheduler.guardedScheduler((r, e, d, u) -> { throw new IllegalStateException(); })
         .schedule(Runnable::run, () -> {}, 1, TimeUnit.MINUTES);
-    assertThat(future).isSameInstanceAs(DisabledFuture.INSTANCE);
-
-    var event = Iterables.getOnlyElement(TestLoggerFactory.getLoggingEvents());
-    assertThat(event.getFormattedMessage())
-        .isEqualTo("Exception thrown by scheduler; discarded task");
-    assertThat(event.getThrowable().orElseThrow()).isInstanceOf(IllegalStateException.class);
-    assertThat(event.getLevel()).isEqualTo(WARN);
+    assertThat(future).isSameInstanceAs(DisabledFuture.instance());
+    assertThat(logEvents()
+        .withMessage("Exception thrown by scheduler; discarded task")
+        .withThrowable(IllegalStateException.class)
+        .withLevel(WARN)
+        .exclusively())
+        .hasSize(1);
   }
 
   /* --------------- ScheduledExecutorService --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void scheduledExecutorService_null() {
     assertThrows(NullPointerException.class, () -> Scheduler.forScheduledExecutorService(null));
   }
 
   @Test
   public void scheduledExecutorService_schedule() {
-    var scheduledExecutor = Mockito.mock(ScheduledExecutorService.class);
+    @SuppressWarnings("PMD.CloseResource")
+    ScheduledExecutorService scheduledExecutor = Mockito.mock();
     var task = ArgumentCaptor.forClass(Runnable.class);
-    var executor = Mockito.mock(Executor.class);
+    Executor executor = Mockito.mock();
     Runnable command = () -> {};
 
     var scheduler = Scheduler.forScheduledExecutorService(scheduledExecutor);
     var future = scheduler.schedule(executor, command, 1L, TimeUnit.MINUTES);
-    assertThat(future).isNotSameInstanceAs(DisabledFuture.INSTANCE);
+    assertThat(future).isNotSameInstanceAs(DisabledFuture.instance());
 
     verify(scheduledExecutor).isShutdown();
     verify(scheduledExecutor).schedule(task.capture(), eq(1L), eq(TimeUnit.MINUTES));
@@ -189,13 +197,14 @@ public final class SchedulerTest {
 
   @Test
   public void scheduledExecutorService_shutdown() {
-    var scheduledExecutor = Mockito.mock(ScheduledExecutorService.class);
-    var executor = Mockito.mock(Executor.class);
+    @SuppressWarnings("PMD.CloseResource")
+    ScheduledExecutorService scheduledExecutor = Mockito.mock();
+    Executor executor = Mockito.mock();
 
     when(scheduledExecutor.isShutdown()).thenReturn(true);
     var scheduler = Scheduler.forScheduledExecutorService(scheduledExecutor);
     var future = scheduler.schedule(executor, () -> {}, 1L, TimeUnit.MINUTES);
-    assertThat(future).isSameInstanceAs(DisabledFuture.INSTANCE);
+    assertThat(future).isSameInstanceAs(DisabledFuture.instance());
 
     verify(scheduledExecutor).isShutdown();
     verifyNoMoreInteractions(scheduledExecutor);

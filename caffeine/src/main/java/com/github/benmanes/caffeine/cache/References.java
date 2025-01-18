@@ -23,14 +23,15 @@ import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
 import java.util.Objects;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods and classes pertaining to weak and soft references.
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
-@SuppressWarnings("PMD.MissingStaticMethodInNonInstantiatableClass")
+@SuppressWarnings({"EqualsWhichDoesntCheckParameterClass",
+    "PMD.MissingStaticMethodInNonInstantiatableClass"})
 final class References {
 
   private References() {}
@@ -68,7 +69,7 @@ final class References {
       if (object == this) {
         return true;
       } else if (object instanceof InternalReference<?>) {
-        InternalReference<?> referent = (InternalReference<?>) object;
+        var referent = (InternalReference<?>) object;
         return (get() == referent.get());
       }
       return false;
@@ -82,11 +83,11 @@ final class References {
      * @return {@code true} if this object is equivalent by {@link Object#equals} as the argument;
      *         {@code false} otherwise
      */
-    default boolean objectEquals(Object object) {
+    default boolean objectEquals(@Nullable Object object) {
       if (object == this) {
         return true;
       } else if (object instanceof InternalReference<?>) {
-        InternalReference<?> referent = (InternalReference<?>) object;
+        var referent = (InternalReference<?>) object;
         return Objects.equals(get(), referent.get());
       }
       return false;
@@ -118,7 +119,7 @@ final class References {
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@Nullable Object object) {
       return referenceEquals(object);
     }
 
@@ -159,7 +160,7 @@ final class References {
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@Nullable Object object) {
       return objectEquals(object);
     }
 
@@ -189,22 +190,22 @@ final class References {
     }
 
     @Override
-    public Object getKeyReference() {
+    public final Object getKeyReference() {
       return this;
     }
 
     @Override
-    public boolean equals(Object object) {
+    public final boolean equals(@Nullable Object object) {
       return referenceEquals(object);
     }
 
     @Override
-    public int hashCode() {
+    public final int hashCode() {
       return hashCode;
     }
 
     @Override
-    public String toString() {
+    public final String toString() {
       return String.format(US,
           "%s{key=%s, hashCode=%d}", getClass().getSimpleName(), get(), hashCode);
     }
@@ -230,7 +231,7 @@ final class References {
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@Nullable Object object) {
       return objectEquals(object);
     }
 
@@ -271,7 +272,7 @@ final class References {
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@Nullable Object object) {
       return referenceEquals(object);
     }
 
@@ -312,7 +313,7 @@ final class References {
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@Nullable Object object) {
       return referenceEquals(object);
     }
 

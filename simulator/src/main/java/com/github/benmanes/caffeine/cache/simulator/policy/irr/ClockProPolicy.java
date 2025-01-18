@@ -16,12 +16,16 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.irr;
 
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
+
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
+import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -34,7 +38,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * scanned.
  * <p>
  * ClockPro uses three hands that scan the queue. The hot hand points to the largest recency, the
- * cold hand to the cold entry furthest from the hot hand, and the test hand to the last cold entry
+ * cold hand to the cold entry farthest from the hot hand, and the test hand to the last cold entry
  * in the test period. This policy is adaptive by adjusting the percentage of hot and cold entries
  * that may reside in the cache. It uses non-resident (ghost) entries to retain additional history,
  * which are removed during the test hand's scan. The algorithm is explained by the authors in
@@ -58,21 +62,21 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   // We place all the accessed pages, either hot or cold, into one single list in the order of their
   // accesses. In the list, the pages with small recency are at the list head, and the pages with
   // large recency are at the list tail.
-  private Node listHead;
+  private @Nullable Node listHead;
 
   // Points to the hot page with the largest recency. The position of this hand actually serves as a
   // threshold of being a hot page. Any hot pages swept by the hand turn into cold ones.
-  private Node handHot;
+  private @Nullable Node handHot;
 
   // Points to the last resident cold page (i.e., the farthest one to the list head). Because we
   // always select this cold page for replacement, this is the position where we start to look for a
   // victim page, equivalent to the hand in CLOCK.
-  private Node handCold;
+  private @Nullable Node handCold;
 
   // Points to the last cold page in the test period. This hand is used to terminate the test period
   // of cold pages. The non-resident cold pages swept over by this hand will leave the circular
   // list.
-  private Node handTest;
+  private @Nullable Node handTest;
 
   // Maximum number of resident pages (hot + resident cold)
   private final int maxSize;
@@ -93,7 +97,7 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   private int maxResColdSize;
 
   public ClockProPolicy(Config config) {
-    ClockProSettings settings = new ClockProSettings(config);
+    var settings = new ClockProSettings(config);
     this.maxSize = Math.toIntExact(settings.maximumSize());
     this.maxNonResSize = (int) (maxSize * settings.nonResidentMultiplier());
     this.minResColdSize = (int) (maxSize * settings.percentMinCold());
@@ -133,7 +137,7 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   @Override
   public void record(long key) {
     policyStats.recordOperation();
-    Node node = data.get(key);
+    @Var Node node = data.get(key);
     if (node == null) {
       node = new Node(key);
       data.put(key, node);
@@ -170,12 +174,12 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   }
 
   /** Records a miss when the hot set is not full. */
-  private void onHotWarmupMiss(Node node) {
+  private static void onHotWarmupMiss(Node node) {
     node.moveToHead(Status.HOT);
   }
 
   /** Records a miss when the cold set is not full. */
-  private void onColdWarmupMiss(Node node) {
+  private static void onColdWarmupMiss(Node node) {
     node.moveToHead(Status.COLD_RES_IN_TEST);
   }
 
@@ -243,6 +247,7 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
 
   private void runHandCold() {
     // runHandCold is used to search for a resident cold page for replacement.
+    requireNonNull(handCold);
     checkState(handCold.isResidentCold());
 
     if (handCold.marked) {
@@ -287,10 +292,11 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
     // What triggers the movement of handHot is that a cold page (== argument "trigger") is found to
     // have been accessed in its test period and thus turns into a hot page, which "maybe"
     // accordingly turns the hot page with the largest recency into a cold page.
+    requireNonNull(handHot);
     checkState(handHot.isHot());
     checkState(trigger.isInTest());
 
-    boolean demoted = false;
+    @Var boolean demoted = false;
     while (handHot != trigger) {
       if (handHot.isHot()) {
         // If the reference bit of the hot page pointed to by handHot is unset, we can simply change
@@ -321,6 +327,7 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   }
 
   private void runHandTest() {
+    requireNonNull(handTest);
     checkState(handTest.isInTest());
     terminateTestPeriod(handTest);
     nextHandTest();
@@ -348,7 +355,7 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   private void nextHandCold() {
     if (sizeResCold > 0) {
       if (handCold == null) {
-        handCold = listHead.prev;
+        handCold = requireNonNull(listHead).prev;
       }
       while (!handCold.isResidentCold()) {
         handCold = handCold.prev;
@@ -362,7 +369,7 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   private void nextHandHot() {
     if (sizeHot > 0) {
       if (handHot == null) {
-        handHot = listHead.prev;
+        handHot = requireNonNull(listHead).prev;
       }
       while (handHot.isCold()) {
         // Terminate test period of encountered cold pages.
@@ -380,7 +387,7 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   private void nextHandTest() {
     if (sizeInTest > 0) {
       if (handTest == null) {
-        handTest = (handHot == null ? listHead.prev : handHot);
+        handTest = (handHot == null ? requireNonNull(listHead).prev : handHot);
       }
       while (!handTest.isInTest()) {
         handTest = handTest.prev;
@@ -441,47 +448,47 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
   private void validateStatus() {
     checkState(listHead != null);
 
-    int sizeHot;
-    int sizeResCold;
-    int sizeNonResCold;
-    int sizeInTest;
-    sizeHot = sizeInTest = sizeResCold = sizeNonResCold = 0;
+    @Var int hotSize = 0;
+    @Var int inTestSize = 0;
+    @Var int resColdSize = 0;
+    @Var int nonResColdSize = 0;
 
-    Node node = listHead;
+    @Var Node node = listHead;
     do {
       if (node == null) {
         break;
       }
       checkState(node.isInClock());
       if (node.isHot()) {
-        sizeHot++;
-      }
-      if (node.isResidentCold()) {
-        sizeResCold++;
-      }
-      if (!node.isResident()) {
-        sizeNonResCold++;
+        hotSize++;
       }
       if (node.isInTest()) {
-        sizeInTest++;
+        inTestSize++;
+      }
+      if (node.isResidentCold()) {
+        resColdSize++;
+      }
+      if (!node.isResident()) {
+        nonResColdSize++;
       }
       node = node.next;
     } while (node != listHead);
 
-    checkState(sizeHot == this.sizeHot);
-    checkState(sizeNonResCold == this.sizeNonResCold);
-    checkState(sizeInTest == this.sizeInTest);
-    checkState(sizeResCold == this.sizeResCold);
-    checkState(sizeHot + sizeResCold == maxSize - sizeFree);
-    checkState(sizeResCold + sizeFree >= minResColdSize);
-    checkState(sizeResCold <= maxResColdSize);
-    checkState(sizeNonResCold <= maxNonResSize);
+    checkState(hotSize == sizeHot);
+    checkState(inTestSize == sizeInTest);
+    checkState(resColdSize == sizeResCold);
+    checkState(resColdSize <= maxResColdSize);
+    checkState(nonResColdSize <= maxNonResSize);
+    checkState(nonResColdSize == sizeNonResCold);
+    checkState(resColdSize + sizeFree >= minResColdSize);
+    checkState(hotSize + resColdSize == maxSize - sizeFree);
   }
 
   /** Prints out the internal state of the policy. */
   private void printClock() {
     System.out.println("** CLOCK-Pro list HEAD (small recency) **");
     System.out.println(listHead);
+    requireNonNull(listHead);
     for (Node n = listHead.next; n != listHead; n = n.next) {
       System.out.println(n);
     }
@@ -585,7 +592,7 @@ public final class ClockProPolicy implements KeyOnlyPolicy {
 
     @Override
     public String toString() {
-      StringBuilder sb = new StringBuilder(MoreObjects.toStringHelper(this)
+      var sb = new StringBuilder(MoreObjects.toStringHelper(this)
           .add("key", key)
           .add("marked", marked)
           .add("type", status)

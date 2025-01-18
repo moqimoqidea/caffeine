@@ -18,21 +18,21 @@ package com.github.benmanes.caffeine.cache.local;
 import javax.lang.model.element.Modifier;
 
 import com.github.benmanes.caffeine.cache.Feature;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.MethodSpec;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.MethodSpec;
 
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
-public final class AddRefreshAfterWrite extends LocalCacheRule {
+public final class AddRefreshAfterWrite implements LocalCacheRule {
 
   @Override
-  protected boolean applies() {
+  public boolean applies(LocalCacheContext context) {
     return context.generateFeatures.contains(Feature.REFRESH_WRITE);
   }
 
   @Override
-  protected void execute() {
+  public void execute(LocalCacheContext context) {
     context.constructor.addStatement(
         "this.refreshAfterWriteNanos = builder.getRefreshAfterWriteNanos()");
     context.cache.addField(FieldSpec.builder(long.class, "refreshAfterWriteNanos")

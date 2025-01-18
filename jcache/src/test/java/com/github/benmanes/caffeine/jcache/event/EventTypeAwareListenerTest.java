@@ -30,72 +30,67 @@ import javax.cache.event.CacheEntryRemovedListener;
 import javax.cache.event.CacheEntryUpdatedListener;
 import javax.cache.event.EventType;
 
-import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
-@SuppressWarnings("unchecked")
 public final class EventTypeAwareListenerTest {
-  @Mock Cache<Integer, Integer> cache;
-
-  @BeforeMethod
-  public void before() throws Exception {
-    MockitoAnnotations.openMocks(this).close();
-  }
 
   @Test
   public void closed() throws IOException {
-    when(cache.isClosed()).thenReturn(true);
-    var listener = Mockito.mock(CacheEntryListener.class);
-    try (var forwarder = new EventTypeAwareListener<>(listener)) {
+    CacheEntryListener<Integer, Integer> listener = Mockito.mock();
+    try (var forwarder = new EventTypeAwareListener<>(listener);
+        Cache<Integer, Integer> cache = Mockito.mock()) {
+      when(cache.isClosed()).thenReturn(true);
       forwarder.dispatch(new JCacheEntryEvent<>(cache, EventType.CREATED,
-          /* key */ 1, /* hasOldValue */ false, /* oldValue */ null, /* newValue */ 2));
+          /* key= */ 1, /* hasOldValue= */ false, /* oldValue= */ null, /* newValue= */ 2));
       verifyNoInteractions(listener);
     }
   }
 
   @Test(dataProvider = "exceptions")
   public void created_failure(Throwable error) throws IOException {
-    var listener = Mockito.mock(CacheEntryCreatedListener.class, answer -> { throw error; });
-    try (var forwarder = new EventTypeAwareListener<>(listener)) {
+    CacheEntryCreatedListener<Integer, Integer> listener = Mockito.mock(answer -> { throw error; });
+    try (var forwarder = new EventTypeAwareListener<>(listener);
+        Cache<Integer, Integer> cache = Mockito.mock()) {
       forwarder.dispatch(new JCacheEntryEvent<>(cache, EventType.CREATED,
-          /* key */ 1, /* hasOldValue */ false, /* oldValue */ null, /* newValue */ 2));
+          /* key= */ 1, /* hasOldValue= */ false, /* oldValue= */ null, /* newValue= */ 2));
     }
     verify(listener).onCreated(anyIterable());
   }
 
   @Test(dataProvider = "exceptions")
   public void updated_failure(Throwable error) throws IOException {
-    var listener = Mockito.mock(CacheEntryUpdatedListener.class, answer -> { throw error; });
-    try (var forwarder = new EventTypeAwareListener<>(listener)) {
+    CacheEntryUpdatedListener<Integer, Integer> listener = Mockito.mock(answer -> { throw error; });
+    try (var forwarder = new EventTypeAwareListener<>(listener);
+        Cache<Integer, Integer> cache = Mockito.mock()) {
       forwarder.dispatch(new JCacheEntryEvent<>(cache, EventType.UPDATED,
-          /* key */ 1, /* hasOldValue */ true, /* oldValue */ 2, /* newValue */ 3));
+          /* key= */ 1, /* hasOldValue= */ true, /* oldValue= */ 2, /* newValue= */ 3));
     }
     verify(listener).onUpdated(anyIterable());
   }
 
   @Test(dataProvider = "exceptions")
   public void removed_failure(Throwable error) throws IOException {
-    var listener = Mockito.mock(CacheEntryRemovedListener.class, answer -> { throw error; });
-    try (var forwarder = new EventTypeAwareListener<>(listener)) {
+    CacheEntryRemovedListener<Integer, Integer> listener = Mockito.mock(answer -> { throw error; });
+    try (var forwarder = new EventTypeAwareListener<>(listener);
+        Cache<Integer, Integer> cache = Mockito.mock()) {
       forwarder.dispatch(new JCacheEntryEvent<>(cache, EventType.REMOVED,
-          /* key */ 1, /* hasOldValue */ true, /* oldValue */ 2, /* newValue */ null));
+          /* key= */ 1, /* hasOldValue= */ true, /* oldValue= */ 2, /* newValue= */ null));
     }
     verify(listener).onRemoved(anyIterable());
   }
 
   @Test(dataProvider = "exceptions")
   public void expired_failure(Throwable error) throws IOException {
-    var listener = Mockito.mock(CacheEntryExpiredListener.class, answer -> { throw error; });
-    try (var forwarder = new EventTypeAwareListener<>(listener)) {
+    CacheEntryExpiredListener<Integer, Integer> listener = Mockito.mock(answer -> { throw error; });
+    try (var forwarder = new EventTypeAwareListener<>(listener);
+        Cache<Integer, Integer> cache = Mockito.mock()) {
       forwarder.dispatch(new JCacheEntryEvent<>(cache, EventType.EXPIRED,
-          /* key */ 1, /* hasOldValue */ true, /* oldValue */ 2, /* newValue */ null));
+          /* key= */ 1, /* hasOldValue= */ true, /* oldValue= */ 2, /* newValue= */ null));
     }
     verify(listener).onExpired(anyIterable());
   }

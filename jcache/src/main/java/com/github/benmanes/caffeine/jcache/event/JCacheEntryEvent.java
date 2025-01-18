@@ -24,7 +24,7 @@ import javax.cache.Cache;
 import javax.cache.event.CacheEntryEvent;
 import javax.cache.event.EventType;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A cache event dispatched to a listener.
@@ -76,13 +76,13 @@ final class JCacheEntryEvent<K, V> extends CacheEntryEvent<K, V>
       throw new IllegalArgumentException("Class " + clazz + " is unknown to this implementation");
     }
     @SuppressWarnings("unchecked")
-    T castedEntry = (T) this;
+    var castedEntry = (T) this;
     return castedEntry;
   }
 
   @Override
   public Iterator<CacheEntryEvent<? extends K, ? extends V>> iterator() {
-    return new Iterator<CacheEntryEvent<? extends K, ? extends V>>() {
+    return new Iterator<>() {
       boolean hasNext = true;
 
       @Override

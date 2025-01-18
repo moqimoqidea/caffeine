@@ -3,23 +3,35 @@ permissions: read-all
 on: [ push, pull_request ]
 
 jobs:
-  spellcheck:
-    name: Check spelling
+  misspell:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@1b05615854632b887b69ae1be8cbefe72d3ae423 # v2.6.0
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350 # v2.10.3
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Misspell
+        uses: reviewdog/action-misspell@18ffb61effb93b47e332f185216be7e49592e7e1 # v1.26.1
+        with:
+          reporter: github-check
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350 # v2.10.3
         with:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: >
             github.com:443
             objects.githubusercontent.com:443
-            raw.githubusercontent.com:443
-      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
-      - name: Install
-        run: wget -O - -q https://raw.githubusercontent.com/client9/misspell/master/install-misspell.sh | sh -s -- -b .
-      - name: Spell Check with Misspell
-        run: ./misspell -error .
-      - name: Spell Check with Typos
-        uses: crate-ci/typos@4550e7d4371fcf55649adfcda9b77716658504b1 # v1.16.17
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Typos
+        uses: crate-ci/typos@685eb3d55be2f85191e8c84acb9f44d7756f84ab # v1.29.4

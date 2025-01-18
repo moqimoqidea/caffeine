@@ -1,15 +1,17 @@
 name: build
+on:
+  pull_request: {}
+  push:
+    branches: [master, v2.dev, v3.dev]
 permissions: read-all
-on: [ push, pull_request ]
 
 env:
-  GRADLE_ENTERPRISE_CACHE_PASSWORD: ${{ secrets.GRADLE_ENTERPRISE_CACHE_PASSWORD }}
-  GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
+  DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
   ALLOWED_ENDPOINTS: >
+    *.actions.githubusercontent.com:443
     api.adoptium.net:443
     api.github.com:443
     api.snapcraft.io:443
-    artifactcache.actions.githubusercontent.com:443
     caffeine.gradle-enterprise.cloud:443
     cdn.azul.com:443
     cloudflare.com:443
@@ -25,7 +27,6 @@ env:
     jcenter.bintray.com:443
     objects.githubusercontent.com:443
     oss.sonatype.org:443
-    pipelines.actions.githubusercontent.com:443
     plugins.gradle.org:443
     plugins-artifacts.gradle.org:443
     raw.githubusercontent.com:443
@@ -38,7 +39,6 @@ env:
     schemastore.org:443
     www.graalvm.org:443
   PUBLISH_JDK: 11
-  EA_JDK: 21
 
 jobs:
   compile:
@@ -47,31 +47,26 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: [ 11, 20, 21, GraalVM ]
+        java: [ 11, 23, 25, GraalVM ]
     env:
       JAVA_VERSION: ${{ matrix.java }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@1b05615854632b887b69ae1be8cbefe72d3ae423 # v2.6.0
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350 # v2.10.3
         with:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: ${{ env.ALLOWED_ENDPOINTS }}
       - name: Checkout
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
-      - name: Prepare GraalVM
-        if: matrix.java == 'GraalVM'
-        shell: bash
-        run: echo "GRADLE_ARGS=--no-build-cache" >> $GITHUB_ENV
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Compile
         uses: ./.github/actions/run-gradle
         with:
-          java: ${{ matrix.java }}
-          early-access: ${{ env.EA_JDK }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          java: ${{ env.JAVA_VERSION }}
           arguments: check -x test ${{ env.GRADLE_ARGS }}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Cancel if failed
-        uses: andymckay/cancel-action@b9280e3f8986d7a8e91c7462efc0fa318010c8b1 # 0.3
+        uses: andymckay/cancel-action@a955d435292c0d409d104b57d8e78435a93a6ef1 # 0.5
         continue-on-error: true
         if: failure()
 
@@ -91,72 +86,99 @@ jobs:
           - caffeine:weakKeysAndWeakValuesStatsSyncCaffeineSlowTest
           - caffeine:weakKeysAndSoftValuesStatsSyncCaffeineSlowTest
           - caffeine:strongKeysAndStrongValuesStatsSyncCaffeineTest
-          - caffeine:weakKeysAndStrongValuesStatsSyncGuavaSlowTest
           - caffeine:weakKeysAndStrongValuesStatsAsyncCaffeineTest
-          - caffeine:strongKeysAndWeakValuesStatsSyncGuavaSlowTest
-          - caffeine:strongKeysAndSoftValuesStatsSyncGuavaSlowTest
           - caffeine:weakKeysAndStrongValuesStatsSyncCaffeineTest
           - caffeine:weakKeysAndStrongValuesAsyncCaffeineSlowTest
           - caffeine:strongKeysAndWeakValuesStatsSyncCaffeineTest
           - caffeine:strongKeysAndSoftValuesStatsSyncCaffeineTest
-          - caffeine:weakKeysAndWeakValuesStatsSyncGuavaSlowTest
           - caffeine:weakKeysAndStrongValuesSyncCaffeineSlowTest
-          - caffeine:weakKeysAndSoftValuesStatsSyncGuavaSlowTest
           - caffeine:strongKeysAndWeakValuesSyncCaffeineSlowTest
-          - caffeine:strongKeysAndStrongValuesStatsSyncGuavaTest
           - caffeine:strongKeysAndSoftValuesSyncCaffeineSlowTest
           - caffeine:weakKeysAndWeakValuesStatsSyncCaffeineTest
           - caffeine:weakKeysAndSoftValuesStatsSyncCaffeineTest
           - caffeine:strongKeysAndStrongValuesAsyncCaffeineTest
           - caffeine:weakKeysAndWeakValuesSyncCaffeineSlowTest
-          - caffeine:weakKeysAndStrongValuesStatsSyncGuavaTest
           - caffeine:weakKeysAndSoftValuesSyncCaffeineSlowTest
-          - caffeine:strongKeysAndWeakValuesStatsSyncGuavaTest
           - caffeine:strongKeysAndStrongValuesSyncCaffeineTest
-          - caffeine:strongKeysAndSoftValuesStatsSyncGuavaTest
-          - caffeine:weakKeysAndStrongValuesSyncGuavaSlowTest
           - caffeine:weakKeysAndStrongValuesAsyncCaffeineTest
-          - caffeine:strongKeysAndWeakValuesSyncGuavaSlowTest
-          - caffeine:strongKeysAndSoftValuesSyncGuavaSlowTest
-          - caffeine:weakKeysAndWeakValuesStatsSyncGuavaTest
           - caffeine:weakKeysAndStrongValuesSyncCaffeineTest
-          - caffeine:weakKeysAndSoftValuesStatsSyncGuavaTest
           - caffeine:strongKeysAndWeakValuesSyncCaffeineTest
           - caffeine:strongKeysAndSoftValuesSyncCaffeineTest
-          - caffeine:weakKeysAndWeakValuesSyncGuavaSlowTest
-          - caffeine:weakKeysAndSoftValuesSyncGuavaSlowTest
-          - caffeine:strongKeysAndStrongValuesSyncGuavaTest
           - caffeine:weakKeysAndWeakValuesSyncCaffeineTest
           - caffeine:weakKeysAndSoftValuesSyncCaffeineTest
-          - caffeine:weakKeysAndStrongValuesSyncGuavaTest
-          - caffeine:strongKeysAndWeakValuesSyncGuavaTest
-          - caffeine:strongKeysAndSoftValuesSyncGuavaTest
-          - caffeine:weakKeysAndWeakValuesSyncGuavaTest
-          - caffeine:weakKeysAndSoftValuesSyncGuavaTest
+          - caffeine:junitJupiterTest
+          - caffeine:standaloneTest
           - caffeine:lincheckTest
           - caffeine:isolatedTest
           - caffeine:junitTest
           - simulator:check
           - jcache:check
           - guava:check
-        java: [ 11 ]
+        java: [ 11, 23 ]
+        include:
+          - suite: caffeine:weakKeysAndStrongValuesStatsSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:strongKeysAndWeakValuesStatsSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:strongKeysAndSoftValuesStatsSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:weakKeysAndWeakValuesStatsSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:weakKeysAndSoftValuesStatsSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:strongKeysAndStrongValuesStatsSyncGuavaTest
+            java: 11
+          - suite: caffeine:weakKeysAndStrongValuesStatsSyncGuavaTest
+            java: 11
+          - suite: caffeine:strongKeysAndWeakValuesStatsSyncGuavaTest
+            java: 11
+          - suite: caffeine:strongKeysAndSoftValuesStatsSyncGuavaTest
+            java: 11
+          - suite: caffeine:weakKeysAndStrongValuesSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:strongKeysAndWeakValuesSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:strongKeysAndSoftValuesSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:weakKeysAndWeakValuesStatsSyncGuavaTest
+            java: 11
+          - suite: caffeine:weakKeysAndSoftValuesStatsSyncGuavaTest
+            java: 11
+          - suite: caffeine:weakKeysAndWeakValuesSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:weakKeysAndSoftValuesSyncGuavaSlowTest
+            java: 11
+          - suite: caffeine:strongKeysAndStrongValuesSyncGuavaTest
+            java: 11
+          - suite: caffeine:weakKeysAndStrongValuesSyncGuavaTest
+            java: 11
+          - suite: caffeine:strongKeysAndWeakValuesSyncGuavaTest
+            java: 11
+          - suite: caffeine:strongKeysAndSoftValuesSyncGuavaTest
+            java: 11
+          - suite: caffeine:weakKeysAndWeakValuesSyncGuavaTest
+            java: 11
+          - suite: caffeine:weakKeysAndSoftValuesSyncGuavaTest
+            java: 11
+          - suite: caffeine:fuzzTest
+            java: 11
     env:
       JAVA_VERSION: ${{ matrix.java }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@1b05615854632b887b69ae1be8cbefe72d3ae423 # v2.6.0
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350 # v2.10.3
         with:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: ${{ env.ALLOWED_ENDPOINTS }}
       - name: Checkout
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
-      - name: Run tests (${{ matrix.suite }})
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run tests (${{ env.JAVA_VERSION }})
         uses: ./.github/actions/run-gradle
         with:
-          java: ${{ matrix.java }}
+          java: ${{ env.JAVA_VERSION }}
           arguments: ${{ matrix.suite }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Format Test Artifact Name
         if: always() && (env.JAVA_VERSION == env.PUBLISH_JDK)
         run: |
@@ -169,14 +191,14 @@ jobs:
           find . -path */jacoco/*.exec -o -path */results/*.xml
           | tar czf ${{ env.ARTIFACT_NAME }}.tar.gz --files-from -
       - name: Upload test results
-        uses: actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32 # v3.1.3
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: always() && (env.JAVA_VERSION == env.PUBLISH_JDK)
         with:
           retention-days: 1
           name: ${{ env.ARTIFACT_NAME }}-results
           path: ${{ env.ARTIFACT_NAME }}.tar.gz
       - name: Cancel if failed
-        uses: andymckay/cancel-action@b9280e3f8986d7a8e91c7462efc0fa318010c8b1 # 0.3
+        uses: andymckay/cancel-action@a955d435292c0d409d104b57d8e78435a93a6ef1 # 0.5
         continue-on-error: true
         if: failure()
 
@@ -184,10 +206,10 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     needs: tests
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push') && (github.event.repository.fork == false)
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@1b05615854632b887b69ae1be8cbefe72d3ae423 # v2.6.0
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350 # v2.10.3
         with:
           disable-sudo: true
           egress-policy: block
@@ -195,8 +217,10 @@ jobs:
             ${{ env.ALLOWED_ENDPOINTS }}
             artifacts.codacy.com:443
             api.codacy.com:443
+            app.deepsource.com:443
             codecov.io:443
             coveralls.io:443
+            deepsource.io:443
             fastly.com:443
             nodejs.org:443
             raw.githubusercontent.com
@@ -205,11 +229,11 @@ jobs:
             storage.googleapis.com:443
             uploader.codecov.io:443
       - name: Checkout
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
       - name: Download Tests Results
-        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a # v3.0.2
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
       - name: Decompress
         run: find . -type f -name '*.tar.gz' -exec sh -c 'tar -zxf {} --one-top-level' \;
       - name: Combine Jacoco Reports
@@ -217,6 +241,7 @@ jobs:
         with:
           arguments: check -x test
           java: ${{ env.PUBLISH_JDK }}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Publish to Coveralls
         uses: ./.github/actions/run-gradle
         env:
@@ -224,9 +249,10 @@ jobs:
         with:
           arguments: coveralls
           java: ${{ env.PUBLISH_JDK }}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
         continue-on-error: true
       - name: Publish to Codecov
-        uses: codecov/codecov-action@eaaf4bedf32dbdc6b720b63067d99c4d77d6047d # v3.1.4
+        uses: codecov/codecov-action@1e68e06f1dbfde0e4cefc87efeba9e4643565303 # v5.1.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
       - name: Publish to Codacy
@@ -234,6 +260,13 @@ jobs:
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
         continue-on-error: true
+      - name: Publish to DeepSource
+        uses: deepsourcelabs/test-coverage-action@e02a039827236fa21a95866e7cd0b1c52ca61e76 # v1.1.2
+        continue-on-error: true
+        with:
+          key: java
+          dsn: ${{ secrets.DEEPSOURCE_DSN }}
+          coverage-file: ./build/reports/jacoco/jacocoFullReport/jacocoFullReport.xml
       - name: Publish to SonarQube
         uses: ./.github/actions/run-gradle
         env:
@@ -242,6 +275,7 @@ jobs:
         with:
           java: ${{ env.PUBLISH_JDK }}
           arguments: sonar -Dsonar.branch.name=${GITHUB_REF##*/}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
         continue-on-error: true
 
   test-results:
@@ -253,7 +287,7 @@ jobs:
       checks: write
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@1b05615854632b887b69ae1be8cbefe72d3ae423 # v2.6.0
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350 # v2.10.3
         with:
           disable-sudo: true
           egress-policy: block
@@ -261,11 +295,11 @@ jobs:
             ${{ env.ALLOWED_ENDPOINTS }}
             badgen.net:443
       - name: Download Tests
-        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a # v3.0.2
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
       - name: Decompress
         run: find . -type f -name '*.tar.gz' -exec sh -c 'tar -zxf {} --one-top-level' \;
       - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@d93dbc08d265e4653da0c0af544bee2a851d3e38 # v2.10.0
+        uses: EnricoMi/publish-unit-test-result-action@170bf24d20d201b842d7a52403b73ed297e6645b # v2.18.0
         continue-on-error: true
         id: test-results
         with:
@@ -285,7 +319,8 @@ jobs:
       - name: Upload badge to Gist
         uses: popsiclestick/gist-sync-action@88f8633178625914f2a01abf1a765f7272a580fa # v1.2.0
         if: >
-          steps.test-badge.outcome == 'success'
+          github.event.repository.fork == false
+          && steps.test-badge.outcome == 'success'
           && endsWith(github.ref, github.event.repository.default_branch)
         with:
           gist_url: https://gist.githubusercontent.com/ben-manes/c20eb418f0e0bd6dfe1c25beb35faae4
@@ -300,48 +335,36 @@ jobs:
     needs: tests
     if: >
       github.event_name == 'push'
+      && github.event.repository.fork == false
       && endsWith(github.ref, github.event.repository.default_branch)
+    permissions:
+      id-token: write
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@1b05615854632b887b69ae1be8cbefe72d3ae423 # v2.6.0
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350 # v2.10.3
         with:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: >
             ${{ env.ALLOWED_ENDPOINTS }}
-            checkerframework.org:443
             docs.oracle.com:443
             errorprone.info:443
-            lightbend.github.io:443
             guava.dev:443
-      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
-      - name: Set up JDK ${{ env.PUBLISH_JDK }}
-        uses: Wandalen/wretry.action@a163f62ae554a8f3cbe27b23db15b60c0ae2e93c # v1.3.0
-        with:
-          action: actions/setup-java@5ffc13f4174014e2d4d4572b3d74c3fa61aeb2c2 # v3.11.0
-          with: |
-            distribution: temurin
-            java-version: ${{ env.PUBLISH_JDK }}
-          attempt_limit: 3
-          attempt_delay: 2000
-      - name: Setup Gradle
-        uses: Wandalen/wretry.action@a163f62ae554a8f3cbe27b23db15b60c0ae2e93c # v1.3.0
-        timeout-minutes: 5
-        with:
-          action: gradle/gradle-build-action@749f47bda3e44aa060e82d7b3ef7e40d953bd629 # v2.4.2
-          with: |
-            cache-read-only: false
-            arguments: help --no-scan
-            generate-job-summary: false
-            gradle-home-cache-cleanup: true
-          attempt_limit: 3
-          attempt_delay: 2000
+            jspecify.dev:443
+            lightbend.github.io:443
+            oauth2.sigstore.dev:443
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Publish Snapshot
+        uses: ./.github/actions/run-gradle
         env:
-          JAVA_VERSION: ${{ env.PUBLISH_JDK }}
           ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.NEXUS_USERNAME }}
           ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.NEXUS_PASSWORD }}
           ORG_GRADLE_PROJECT_signingKey: ${{ secrets.OSSRH_GPG_SECRET_KEY }}
           ORG_GRADLE_PROJECT_signingKeyId: ${{ secrets.OSSRH_GPG_SECRET_KEY_ID }}
           ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.OSSRH_GPG_SECRET_KEY_PASSWORD }}
-        run: ./gradlew --no-configuration-cache publishToSonatype
+        with:
+          attempt-limit: 3
+          attempt-delay: 2
+          java: ${{ env.PUBLISH_JDK }}
+          arguments: publishToSonatype --no-configuration-cache
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}

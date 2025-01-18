@@ -24,7 +24,9 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Computes or retrieves values, based on a key, for use in populating a {@link LoadingCache} or
@@ -39,11 +41,14 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *   LoadingCache<Key, Graph> cache = Caffeine.newBuilder().build(loader);
  * }</pre>
  *
+ * @param <K> the type of keys
+ * @param <V> the type of values
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@NullMarked
 @FunctionalInterface
 @SuppressWarnings({"FunctionalInterfaceMethodChanged", "PMD.SignatureDeclareThrowsException"})
-public interface CacheLoader<K, V> extends AsyncCacheLoader<K, V> {
+public interface CacheLoader<K, V extends @Nullable Object> extends AsyncCacheLoader<K, V> {
 
   /**
    * Computes or retrieves the value corresponding to {@code key}.
@@ -57,7 +62,6 @@ public interface CacheLoader<K, V> extends AsyncCacheLoader<K, V> {
    *         treated like any other {@code Exception} in all respects except that, when it is
    *         caught, the thread's interrupt status is set
    */
-  @Nullable
   V load(K key) throws Exception;
 
   /**
@@ -83,12 +87,14 @@ public interface CacheLoader<K, V> extends AsyncCacheLoader<K, V> {
    *         treated like any other {@code Exception} in all respects except that, when it is
    *         caught, the thread's interrupt status is set
    */
-  default Map<? extends K, ? extends V> loadAll(Set<? extends K> keys) throws Exception {
+  default Map<? extends K, ? extends @NonNull V> loadAll(Set<? extends K> keys) throws Exception {
     throw new UnsupportedOperationException();
   }
 
   /**
    * Asynchronously computes or retrieves the value corresponding to {@code key}.
+   * <p>
+   * <b>Warning:</b> loading <b>must not</b> attempt to update any mappings of this cache directly.
    *
    * @param key the non-null key whose value should be loaded
    * @param executor the executor that asynchronously loads the entry
@@ -130,7 +136,7 @@ public interface CacheLoader<K, V> extends AsyncCacheLoader<K, V> {
    *         that key; <b>may not contain null values</b>
    */
   @Override
-  default CompletableFuture<? extends Map<? extends K, ? extends V>> asyncLoadAll(
+  default CompletableFuture<? extends Map<? extends K, ? extends @NonNull V>> asyncLoadAll(
       Set<? extends K> keys, Executor executor) throws Exception {
     requireNonNull(keys);
     requireNonNull(executor);
@@ -165,7 +171,7 @@ public interface CacheLoader<K, V> extends AsyncCacheLoader<K, V> {
    *         treated like any other {@code Exception} in all respects except that, when it is
    *         caught, the thread's interrupt status is set
    */
-  default @Nullable V reload(K key, V oldValue) throws Exception {
+  default V reload(K key, @NonNull V oldValue) throws Exception {
     return load(key);
   }
 
@@ -188,7 +194,7 @@ public interface CacheLoader<K, V> extends AsyncCacheLoader<K, V> {
    */
   @Override
   default CompletableFuture<? extends V> asyncReload(
-      K key, V oldValue, Executor executor) throws Exception {
+      K key, @NonNull V oldValue, Executor executor) throws Exception {
     requireNonNull(key);
     requireNonNull(executor);
     return CompletableFuture.supplyAsync(() -> {
@@ -220,14 +226,20 @@ public interface CacheLoader<K, V> extends AsyncCacheLoader<K, V> {
    * @throws NullPointerException if the mappingFunction is null
    */
   @SuppressWarnings("FunctionalInterfaceClash")
-  static <K, V> CacheLoader<K, V> bulk(Function<? super Set<? extends K>,
-      ? extends Map<? extends K, ? extends V>> mappingFunction) {
+  static <K, V extends @Nullable Object> CacheLoader<K, V> bulk(Function<? super Set<? extends K>,
+      ? extends Map<? extends K, ? extends @NonNull V>> mappingFunction) {
     requireNonNull(mappingFunction);
-    return new CacheLoader<K, V>() {
-      @Override public @Nullable V load(K key) {
+    return new CacheLoader<>() {
+      /*
+       * If the caller passes a mapping function that may ever return partial results, then calls to
+       * load() may return null. In that case, the caller should type the return value of bulk(...)
+       * as a CacheLoader<Foo, @Nullable Bar>, rather than a CacheLoader<Foo, Bar>.
+       */
+      @SuppressWarnings("NullAway")
+      @Override public V load(K key) {
         return loadAll(Set.of(key)).get(key);
       }
-      @Override public Map<? extends K, ? extends V> loadAll(Set<? extends K> keys) {
+      @Override public Map<? extends K, ? extends @NonNull V> loadAll(Set<? extends K> keys) {
         return mappingFunction.apply(keys);
       }
     };

@@ -20,6 +20,8 @@ import static com.google.common.truth.Truth.assertThat;
 
 import java.lang.ref.WeakReference;
 
+import org.jspecify.annotations.Nullable;
+
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.guava.CaffeinatedGuava;
 import com.github.benmanes.caffeine.guava.compatibility.CacheBuilderFactory.Strength;
@@ -28,6 +30,7 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Sets;
 
 import junit.framework.TestCase;
 
@@ -47,13 +50,13 @@ public class CacheReferencesTest extends TestCase {
         }
       };
 
-  private CacheBuilderFactory factoryWithAllKeyStrengths() {
+  private static CacheBuilderFactory factoryWithAllKeyStrengths() {
     return new CacheBuilderFactory()
-        .withKeyStrengths(ImmutableSet.of(STRONG, Strength.WEAK))
-        .withValueStrengths(ImmutableSet.of(STRONG, Strength.WEAK, Strength.SOFT));
+        .withKeyStrengths(Sets.immutableEnumSet(STRONG, Strength.WEAK))
+        .withValueStrengths(Sets.immutableEnumSet(STRONG, Strength.WEAK, Strength.SOFT));
   }
 
-  private Iterable<LoadingCache<Key, String>> caches() {
+  private static Iterable<LoadingCache<Key, String>> caches() {
     CacheBuilderFactory factory = factoryWithAllKeyStrengths();
     return Iterables.transform(factory.buildAllPermutations(),
         new Function<Caffeine<Object, Object>, LoadingCache<Key, String>>() {
@@ -124,9 +127,9 @@ public class CacheReferencesTest extends TestCase {
 
   // A simple type whose .toString() will return the same value each time, but without maintaining
   // a strong reference to that value.
-  static class Key {
+  static final class Key {
     private final int value;
-    private WeakReference<String> toString;
+    private @Nullable WeakReference<String> toString;
 
     Key(int value) {
       this.value = value;

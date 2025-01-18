@@ -19,7 +19,6 @@ import java.io.Serializable;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.Reset;
 import com.github.benmanes.caffeine.cache.Ticker;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.CacheExecutor;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.CacheExpiry;
@@ -42,7 +41,7 @@ public final class CaffeineCacheFromContext {
   private CaffeineCacheFromContext() {}
 
   public static <K, V> Cache<K, V> newCaffeineCache(CacheContext context) {
-    Caffeine<Object, Object> builder = Caffeine.newBuilder();
+    var builder = Caffeine.newBuilder();
     context.caffeine = builder;
 
     if (context.initialCapacity() != InitialCapacity.DEFAULT) {
@@ -113,7 +112,6 @@ public final class CaffeineCacheFromContext {
 
     @SuppressWarnings("unchecked")
     var castedCache = (Cache<K, V>) context.cache;
-    Reset.resetThreadLocalRandom();
     return castedCache;
   }
 }

@@ -27,12 +27,13 @@ import static com.github.benmanes.caffeine.cache.testing.CacheSpec.Expiration.VA
 import static com.github.benmanes.caffeine.cache.testing.CacheSubject.assertThat;
 import static com.github.benmanes.caffeine.testing.Awaits.await;
 import static com.github.benmanes.caffeine.testing.FutureSubject.assertThat;
+import static com.github.benmanes.caffeine.testing.LoggingEvents.logEvents;
 import static com.github.benmanes.caffeine.testing.MapSubject.assertThat;
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth8.assertThat;
+import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.slf4j.event.Level.WARN;
 
 import java.time.Duration;
@@ -67,8 +68,6 @@ import com.github.benmanes.caffeine.cache.testing.CheckMaxLogLevel;
 import com.github.benmanes.caffeine.cache.testing.CheckNoEvictions;
 import com.github.benmanes.caffeine.testing.ConcurrentTestHarness;
 import com.github.benmanes.caffeine.testing.Int;
-import com.github.valfirst.slf4jtest.TestLoggerFactory;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
@@ -105,7 +104,7 @@ public final class RefreshAfterWriteTest {
       public CompletableFuture<Int> asyncReload(Int key, Int oldValue, Executor executor) {
         reloads.incrementAndGet();
         await().untilTrue(refresh);
-        return oldValue.add(1).asFuture();
+        return oldValue.add(1).toFuture();
       }
     });
     cache.put(key, original);
@@ -232,7 +231,7 @@ public final class RefreshAfterWriteTest {
     assertThat(value).isNotNull();
 
     assertThat(cache.policy().refreshes()).isNotEmpty();
-    var future = cache.policy().refreshes().get(context.firstKey());
+    var future = requireNonNull(cache.policy().refreshes().get(context.firstKey()));
 
     cache.put(context.firstKey(), context.absentValue());
     future.complete(context.absentKey().negate());
@@ -258,7 +257,7 @@ public final class RefreshAfterWriteTest {
     assertThat(value).isNotNull();
 
     assertThat(cache.policy().refreshes()).isNotEmpty();
-    var future = cache.policy().refreshes().get(context.firstKey());
+    var future = requireNonNull(cache.policy().refreshes().get(context.firstKey()));
 
     context.ticker().advance(Duration.ofMinutes(1));
     future.complete(context.absentValue());
@@ -282,7 +281,7 @@ public final class RefreshAfterWriteTest {
     assertThat(value).isNotNull();
 
     assertThat(cache.policy().refreshes()).isNotEmpty();
-    var future = cache.policy().refreshes().get(context.firstKey());
+    var future = requireNonNull(cache.policy().refreshes().get(context.firstKey()));
 
     cache.invalidate(context.firstKey());
     assertThat(cache).doesNotContainKey(context.firstKey());
@@ -308,7 +307,7 @@ public final class RefreshAfterWriteTest {
     assertThat(value).isNotNull();
 
     assertThat(cache.policy().refreshes()).isNotEmpty();
-    var future = cache.policy().refreshes().get(context.firstKey());
+    var future = requireNonNull(cache.policy().refreshes().get(context.firstKey()));
 
     cache.invalidate(context.firstKey());
     future.complete(null);
@@ -343,7 +342,7 @@ public final class RefreshAfterWriteTest {
     var value = cache.get(context.absentKey());
 
     assertThat(value).isEqualTo(context.absentValue());
-    assertThat(TestLoggerFactory.getLoggingEvents()).isEmpty();
+    assertThat(logEvents()).isEmpty();
   }
 
   @CheckNoEvictions
@@ -371,7 +370,7 @@ public final class RefreshAfterWriteTest {
     var value = cache.get(context.absentKey());
 
     assertThat(value).isEqualTo(context.absentValue());
-    assertThat(TestLoggerFactory.getLoggingEvents()).isEmpty();
+    assertThat(logEvents()).isEmpty();
   }
 
   @CheckNoEvictions
@@ -389,21 +388,25 @@ public final class RefreshAfterWriteTest {
     var value = cache.get(context.absentKey());
 
     assertThat(value).isEqualTo(context.absentValue());
-    var event = Iterables.getOnlyElement(TestLoggerFactory.getLoggingEvents());
-    assertThat(event.getThrowable().orElseThrow()).hasCauseThat().isSameInstanceAs(expected);
-    assertThat(event.getFormattedMessage()).isEqualTo("Exception thrown during refresh");
-    assertThat(event.getLevel()).isEqualTo(WARN);
+    assertThat(logEvents()
+        .withMessage("Exception thrown during refresh")
+        .withUnderlyingCause(expected)
+        .withLevel(WARN)
+        .exclusively())
+        .hasSize(1);
   }
 
+  @CheckNoEvictions
   @Test(dataProvider = "caches")
   @CacheSpec(implementation = Implementation.Caffeine,
       population = Population.EMPTY, refreshAfterWrite = Expire.ONE_MINUTE)
   public void refreshIfNeeded_nullFuture(CacheContext context) {
     var refreshed = new AtomicBoolean();
-    CacheLoader<Int, Int> loader = new CacheLoader<Int, Int>() {
+    var loader = new CacheLoader<Int, Int>() {
       @Override public Int load(Int key) {
         throw new IllegalStateException();
       }
+      @SuppressWarnings("NullAway")
       @Override public CompletableFuture<Int> asyncReload(
           Int key, Int oldValue, Executor executor) {
         refreshed.set(true);
@@ -419,15 +422,40 @@ public final class RefreshAfterWriteTest {
     var value = cache.get(context.absentKey());
 
     assertThat(value).isNotNull();
-    var event = Iterables.getOnlyElement(TestLoggerFactory.getLoggingEvents());
-    assertThat(event.getThrowable().orElseThrow()).isInstanceOf(NullPointerException.class);
-    assertThat(event.getFormattedMessage()).isEqualTo(
-        "Exception thrown when submitting refresh task");
-    assertThat(event.getLevel()).isEqualTo(WARN);
+    assertThat(logEvents()
+        .withMessage("Exception thrown when submitting refresh task")
+        .withThrowable(NullPointerException.class)
+        .withLevel(WARN)
+        .exclusively())
+        .hasSize(1);
 
     assertThat(refreshed.get()).isTrue();
     assertThat(cache.policy().refreshes()).isEmpty();
     assertThat(cache).containsEntry(context.absentKey(), context.absentValue());
+  }
+
+  @CheckNoEvictions
+  @Test(dataProvider = "caches")
+  @CacheSpec(loader = Loader.ASYNC_INCOMPLETE,
+      refreshAfterWrite = Expire.ONE_MINUTE, expireAfterWrite = Expire.FOREVER)
+  public void refreshIfNeeded_slowLoad(AsyncLoadingCache<Int, Int> cache, CacheContext context) {
+    cache.synchronous().asMap().put(context.absentKey(), context.absentKey());
+
+    context.ticker().advance(Duration.ofHours(1));
+    cache.put(context.absentKey(), new CompletableFuture<>());
+
+    context.ticker().advance(Duration.ofHours(1));
+    var future = requireNonNull(cache.getIfPresent(context.absentKey()));
+    assertThat(future).isNotDone();
+
+    assertThat(cache.synchronous().policy().refreshes()).isEmpty();
+
+    future.complete(context.absentKey().negate());
+    assertThat(cache.synchronous().policy().refreshes()).isEmpty();
+
+    var expectedMap = new HashMap<>(context.original());
+    expectedMap.put(context.absentKey(), future.join());
+    assertThat(cache).containsExactlyEntriesIn(expectedMap);
   }
 
   /* --------------- getIfPresent --------------- */
@@ -462,7 +490,8 @@ public final class RefreshAfterWriteTest {
     assertThat(context).removalNotifications().isEmpty();
 
     if (context.isCaffeine()) {
-      cache.policy().refreshes().get(context.middleKey()).complete(context.middleKey());
+      var future = requireNonNull(cache.policy().refreshes().get(context.middleKey()));
+      future.complete(context.middleKey());
       assertThat(context).removalNotifications().withCause(REPLACED)
           .contains(context.middleKey(), context.original().get(context.middleKey()))
           .exclusively();
@@ -498,7 +527,7 @@ public final class RefreshAfterWriteTest {
     assertThat(results).isNotEmpty();
     context.ticker().advance(Duration.ofSeconds(45));
     assertThat(cache.getAllPresent(context.firstMiddleLastKeys()))
-        .containsExactlyEntriesIn(Maps.asMap(context.firstMiddleLastKeys(), key -> key));
+        .containsExactlyEntriesIn(Maps.toMap(context.firstMiddleLastKeys(), key -> key));
 
     assertThat(cache).hasSize(context.initialSize());
     assertThat(context).removalNotifications().withCause(REPLACED)
@@ -520,7 +549,8 @@ public final class RefreshAfterWriteTest {
     if (context.isCaffeine()) {
       var replaced = new HashMap<Int, Int>();
       for (var key : context.firstMiddleLastKeys()) {
-        cache.policy().refreshes().get(key).complete(key);
+        var future = requireNonNull(cache.policy().refreshes().get(key));
+        future.complete(key);
         replaced.put(key, context.original().get(key));
       }
       assertThat(context).removalNotifications().withCause(REPLACED)
@@ -553,7 +583,7 @@ public final class RefreshAfterWriteTest {
   @CacheSpec(refreshAfterWrite = Expire.ONE_MINUTE, loader = Loader.ASYNC_INCOMPLETE,
       population = { Population.PARTIAL, Population.FULL })
   public void getFunc_delayed(LoadingCache<Int, Int> cache, CacheContext context) {
-    Function<Int, Int> mappingFunction = context.original()::get;
+    Function<Int, Int> mappingFunction = key -> requireNonNull(context.original().get(key));
     context.ticker().advance(Duration.ofSeconds(30));
     var value = cache.get(context.firstKey(), mappingFunction);
     assertThat(value).isNotNull();
@@ -562,7 +592,8 @@ public final class RefreshAfterWriteTest {
     assertThat(cache.get(context.lastKey(), mappingFunction)).isEqualTo(context.lastKey().negate());
 
     if (context.isCaffeine()) {
-      cache.policy().refreshes().get(context.lastKey()).complete(context.lastKey());
+      var future = requireNonNull(cache.policy().refreshes().get(context.lastKey()));
+      future.complete(context.lastKey());
       assertThat(context).removalNotifications().withCause(REPLACED)
           .contains(context.lastKey(), context.original().get(context.lastKey()))
           .exclusively();
@@ -574,7 +605,7 @@ public final class RefreshAfterWriteTest {
   @CacheSpec(refreshAfterWrite = Expire.ONE_MINUTE,
       population = { Population.PARTIAL, Population.FULL })
   public void getFunc_async(AsyncLoadingCache<Int, Int> cache, CacheContext context) {
-    Function<Int, Int> mappingFunction = context.original()::get;
+    Function<Int, Int> mappingFunction = key -> requireNonNull(context.original().get(key));
     context.ticker().advance(Duration.ofSeconds(30));
     cache.get(context.firstKey(), mappingFunction).join();
     context.ticker().advance(Duration.ofSeconds(45));
@@ -619,7 +650,8 @@ public final class RefreshAfterWriteTest {
     assertThat(cache.get(context.firstKey())).isEqualTo(context.firstKey().negate());
 
     if (context.isCaffeine()) {
-      cache.policy().refreshes().get(context.firstKey()).complete(context.firstKey());
+      var future = requireNonNull(cache.policy().refreshes().get(context.firstKey()));
+      future.complete(context.firstKey());
       assertThat(context).removalNotifications().withCause(REPLACED)
           .contains(context.firstKey(), context.original().get(context.firstKey()))
           .exclusively();
@@ -750,7 +782,8 @@ public final class RefreshAfterWriteTest {
 
     if (context.isCaffeine()) {
       for (var key : keys) {
-        cache.policy().refreshes().get(key).complete(key);
+        var future = requireNonNull(cache.policy().refreshes().get(key));
+        future.complete(key);
       }
       assertThat(context).removalNotifications().withCause(REPLACED)
           .contains(Maps.filterKeys(context.original(), context.firstMiddleLastKeys()::contains))
@@ -914,6 +947,7 @@ public final class RefreshAfterWriteTest {
 
     var future = cache.policy().refreshes().get(context.firstKey());
     assertThat(future).isNotNull();
+    requireNonNull(future);
 
     future.complete(Int.MAX_VALUE);
     assertThat(cache.policy().refreshes()).isExhaustivelyEmpty();
@@ -928,7 +962,7 @@ public final class RefreshAfterWriteTest {
     var value = cache.getIfPresent(context.firstKey());
     assertThat(value).isNotNull();
 
-    var future = cache.policy().refreshes().get(context.firstKey());
+    var future = requireNonNull(cache.policy().refreshes().get(context.firstKey()));
     assertThat(cache.policy().refreshes().get(null)).isNull();
     assertThat(cache.policy().refreshes().containsKey(null)).isFalse();
     assertThat(cache.policy().refreshes().containsValue(null)).isFalse();
@@ -947,7 +981,7 @@ public final class RefreshAfterWriteTest {
 
   @Test(dataProvider = "caches")
   @CacheSpec(refreshAfterWrite = Expire.ONE_MINUTE)
-  public void setRefreshAfter_negative(Cache<Int, Int> cache,
+  public void setRefreshAfter_negative(
       CacheContext context, FixedRefresh<Int, Int> refreshAfterWrite) {
     var duration = Duration.ofMinutes(-2);
     assertThrows(IllegalArgumentException.class, () ->
@@ -956,16 +990,17 @@ public final class RefreshAfterWriteTest {
 
   @Test(dataProvider = "caches")
   @CacheSpec(refreshAfterWrite = Expire.ONE_MINUTE)
-  public void setRefreshAfter_excessive(Cache<Int, Int> cache,
+  public void setRefreshAfter_excessive(
       CacheContext context, FixedRefresh<Int, Int> refreshAfterWrite) {
     refreshAfterWrite.setRefreshesAfter(ChronoUnit.FOREVER.getDuration());
     assertThat(refreshAfterWrite.getRefreshesAfter(TimeUnit.NANOSECONDS)).isEqualTo(Long.MAX_VALUE);
   }
 
   @Test(dataProvider = "caches")
+  @SuppressWarnings("PreferJavaTimeOverload")
   @CacheSpec(refreshAfterWrite = Expire.ONE_MINUTE)
   public void setRefreshesAfter(CacheContext context, FixedRefresh<Int, Int> refreshAfterWrite) {
-    refreshAfterWrite.setRefreshesAfter(Duration.ofMinutes(2));
+    refreshAfterWrite.setRefreshesAfter(2, TimeUnit.MINUTES);
     assertThat(refreshAfterWrite.getRefreshesAfter().toMinutes()).isEqualTo(2);
     assertThat(refreshAfterWrite.getRefreshesAfter(TimeUnit.MINUTES)).isEqualTo(2);
   }

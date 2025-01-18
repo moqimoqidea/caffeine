@@ -33,6 +33,7 @@ import com.google.common.base.MoreObjects;
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@SuppressWarnings("ClassEscapesDefinedScope")
 public final class StripedBufferTest {
   static final Integer ELEMENT = 1;
 
@@ -81,6 +82,7 @@ public final class StripedBufferTest {
         Thread.yield();
       }
     });
+    assertThat(buffer.table).isNotNull();
     assertThat(buffer.table.length).isAtMost(MAXIMUM_TABLE_SIZE);
   }
 
@@ -108,14 +110,14 @@ public final class StripedBufferTest {
 
   static final class FakeBuffer<E> extends StripedBuffer<E> {
     final int result;
-    int drains = 0;
+    int drains;
 
     FakeBuffer(int result) {
       this.result = result;
     }
 
     @Override protected Buffer<E> create(E e) {
-      return new Buffer<E>() {
+      return new Buffer<>() {
         @Override public int offer(E e) {
           return result;
         }

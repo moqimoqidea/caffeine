@@ -22,10 +22,12 @@ import static java.util.Locale.US;
 import static java.util.Objects.requireNonNull;
 
 import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.Caffeine.Strength;
 
@@ -70,6 +72,7 @@ import com.github.benmanes.caffeine.cache.Caffeine.Strength;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@NullMarked
 public final class CaffeineSpec {
   static final String SPLIT_OPTIONS = ",";
   static final String SPLIT_KEY_VALUE = "=";
@@ -97,7 +100,7 @@ public final class CaffeineSpec {
    * @return a builder configured to the specification
    */
   Caffeine<Object, Object> toBuilder() {
-    Caffeine<Object, Object> builder = Caffeine.newBuilder();
+    var builder = Caffeine.newBuilder();
     if (initialCapacity != UNSET_INT) {
       builder.initialCapacity(initialCapacity);
     }
@@ -141,9 +144,9 @@ public final class CaffeineSpec {
    */
   @SuppressWarnings("StringSplitter")
   public static CaffeineSpec parse(String specification) {
-    CaffeineSpec spec = new CaffeineSpec(specification);
+    var spec = new CaffeineSpec(specification);
     for (String option : specification.split(SPLIT_OPTIONS)) {
-      spec.parseOption(option.trim());
+      spec.parseOption(option.strip());
     }
     return spec;
   }
@@ -155,18 +158,19 @@ public final class CaffeineSpec {
     }
 
     @SuppressWarnings("StringSplitter")
-    String[] keyAndValue = option.split(SPLIT_KEY_VALUE);
+    String[] keyAndValue = option.split(SPLIT_KEY_VALUE, 3);
+    requireArgument(keyAndValue.length >= 1, "blank key-value pair");
     requireArgument(keyAndValue.length <= 2,
         "key-value pair %s with more than one equals sign", option);
 
-    String key = keyAndValue[0].trim();
-    String value = (keyAndValue.length == 1) ? null : keyAndValue[1].trim();
+    String key = keyAndValue[0].strip();
+    String value = (keyAndValue.length == 1) ? null : keyAndValue[1].strip();
 
-    configure(key, value);
+    configure(option, key, value);
   }
 
   /** Configures the setting. */
-  void configure(String key, @Nullable String value) {
+  void configure(String option, String key, @Nullable String value) {
     switch (key) {
       case "initialCapacity":
         initialCapacity(key, value);
@@ -199,7 +203,7 @@ public final class CaffeineSpec {
         recordStats(value);
         return;
       default:
-        throw new IllegalArgumentException("Unknown key " + key);
+        throw new IllegalArgumentException("Invalid option " + option);
     }
   }
 
@@ -295,13 +299,27 @@ public final class CaffeineSpec {
 
     @SuppressWarnings("NullAway")
     boolean isIsoFormat = value.contains("p") || value.contains("P");
-    if (isIsoFormat) {
-      Duration duration = Duration.parse(value);
-      requireArgument(!duration.isNegative(),
-          "key %s invalid format; was %s, but the duration cannot be negative", key, value);
-      return duration;
-    }
+    Duration duration = isIsoFormat
+        ? parseIsoDuration(key, value)
+        : parseSimpleDuration(key, value);
+    requireArgument(!duration.isNegative(),
+        "key %s invalid format; was %s, but the duration cannot be negative", key, value);
+    return duration;
 
+  }
+
+  /** Returns a parsed duration using the ISO-8601 format. */
+  static Duration parseIsoDuration(String key, String value) {
+    try {
+      return Duration.parse(value);
+    } catch (DateTimeParseException e) {
+      throw new IllegalArgumentException(String.format(US,
+          "key %s invalid format; was %s, but the duration cannot be parsed", key, value), e);
+    }
+  }
+
+  /** Returns a parsed duration using the simple time unit format. */
+  static Duration parseSimpleDuration(String key, String value) {
     @SuppressWarnings("NullAway")
     long duration = parseLong(key, value.substring(0, value.length() - 1));
     TimeUnit unit = parseTimeUnit(key, value);
@@ -335,7 +353,7 @@ public final class CaffeineSpec {
     } else if (!(o instanceof CaffeineSpec)) {
       return false;
     }
-    CaffeineSpec spec = (CaffeineSpec) o;
+    var spec = (CaffeineSpec) o;
     return Objects.equals(refreshAfterWrite, spec.refreshAfterWrite)
         && Objects.equals(expireAfterAccess, spec.expireAfterAccess)
         && Objects.equals(expireAfterWrite, spec.expireAfterWrite)

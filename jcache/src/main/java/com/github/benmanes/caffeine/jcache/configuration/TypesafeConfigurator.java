@@ -22,6 +22,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import java.io.File;
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.util.Collections;
 import java.util.Objects;
@@ -40,9 +41,11 @@ import javax.cache.expiry.Duration;
 import javax.cache.expiry.EternalExpiryPolicy;
 import javax.cache.expiry.ExpiryPolicy;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.jcache.expiry.JCacheExpiryPolicy;
+import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
@@ -57,11 +60,14 @@ import jakarta.inject.Inject;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@NullMarked
 @SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.MutableStaticState"})
 public final class TypesafeConfigurator {
   static final Logger logger = System.getLogger(TypesafeConfigurator.class.getName());
 
+  @SuppressWarnings("NonFinalStaticField")
   static ConfigSource configSource = TypesafeConfigurator::resolveConfig;
+  @SuppressWarnings("NonFinalStaticField")
   static FactoryCreator factoryCreator = FactoryBuilder::factoryOf;
 
   private TypesafeConfigurator() {}
@@ -100,15 +106,14 @@ public final class TypesafeConfigurator {
    * @return the configuration for the cache
    */
   public static <K, V> Optional<CaffeineConfiguration<K, V>> from(Config config, String cacheName) {
-    CaffeineConfiguration<K, V> configuration = null;
     try {
-      if (config.hasPath("caffeine.jcache." + cacheName)) {
-        configuration = new Configurator<K, V>(config, cacheName).configure();
-      }
+      return config.hasPath("caffeine.jcache." + cacheName)
+          ? Optional.of(new Configurator<K, V>(config, cacheName).configure())
+          : Optional.empty();
     } catch (ConfigException.BadPath e) {
       logger.log(Level.WARNING, "Failed to load cache configuration", e);
+      return Optional.empty();
     }
-    return Optional.ofNullable(configuration);
   }
 
   /**
@@ -118,7 +123,7 @@ public final class TypesafeConfigurator {
    * @param factoryCreator the strategy for creating a factory
    */
   @Inject
-  @SuppressWarnings("UnnecessarilyVisible")
+  @SuppressWarnings({"deprecation", "UnnecessarilyVisible"})
   public static void setFactoryCreator(FactoryCreator factoryCreator) {
     TypesafeConfigurator.factoryCreator = requireNonNull(factoryCreator);
   }
@@ -159,11 +164,21 @@ public final class TypesafeConfigurator {
   private static Config resolveConfig(URI uri, ClassLoader classloader) {
     requireNonNull(uri);
     requireNonNull(classloader);
-    var options = ConfigParseOptions.defaults().setAllowMissing(false);
+    var options = ConfigParseOptions.defaults()
+        .setClassLoader(classloader)
+        .setAllowMissing(false);
     if ((uri.getScheme() != null) && uri.getScheme().equalsIgnoreCase("file")) {
       return ConfigFactory.defaultOverrides(classloader)
           .withFallback(ConfigFactory.parseFile(new File(uri), options))
           .withFallback(ConfigFactory.defaultReferenceUnresolved(classloader));
+    } else if ((uri.getScheme() != null) && uri.getScheme().equalsIgnoreCase("jar")) {
+      try {
+        return ConfigFactory.defaultOverrides(classloader)
+            .withFallback(ConfigFactory.parseURL(uri.toURL(), options))
+            .withFallback(ConfigFactory.defaultReferenceUnresolved(classloader));
+      } catch (MalformedURLException e) {
+        throw new ConfigException.BadPath(uri.toString(), "Failed to load cache configuration", e);
+      }
     } else if (isResource(uri)) {
       return ConfigFactory.defaultOverrides(classloader)
           .withFallback(ConfigFactory.parseResources(uri.getSchemeSpecificPart(), options))
@@ -226,9 +241,9 @@ public final class TypesafeConfigurator {
     private void addKeyValueTypes() {
       try {
         @SuppressWarnings("unchecked")
-        Class<K> keyType = (Class<K>) Class.forName(merged.getString("key-type"));
+        var keyType = (Class<K>) Class.forName(merged.getString("key-type"));
         @SuppressWarnings("unchecked")
-        Class<V> valueType = (Class<V>) Class.forName(merged.getString("value-type"));
+        var valueType = (Class<V>) Class.forName(merged.getString("value-type"));
         configuration.setTypes(keyType, valueType);
       } catch (ClassNotFoundException e) {
         throw new IllegalStateException(e);
@@ -265,7 +280,7 @@ public final class TypesafeConfigurator {
 
         Factory<? extends CacheEntryListener<? super K, ? super V>> listenerFactory =
             factoryCreator.factoryOf(listener.getString("class"));
-        Factory<? extends CacheEntryEventFilter<? super K, ? super V>> filterFactory = null;
+        @Var Factory<? extends CacheEntryEventFilter<? super K, ? super V>> filterFactory = null;
         if (listener.hasPath("filter")) {
           filterFactory = factoryCreator.factoryOf(listener.getString("filter"));
         }

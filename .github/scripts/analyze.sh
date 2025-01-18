@@ -3,5 +3,6 @@ set -eux
 
 ./gradlew \
     forbiddenApis -DforbiddenApis \
-    pmdJavaPoet pmdMain pmdCodeGen pmdJmh -Dpmd \
-    spotbugsJavaPoet spotbugsMain spotbugsCodeGen spotbugsJmh -Dspotbugs
+    pmdJavaPoet pmdMain pmdCodeGen pmdJmh pmdTest -Dpmd \
+    spotbugsJavaPoet spotbugsMain spotbugsCodeGen spotbugsJmh spotbugsTest -Dspotbugs \
+    "$@"

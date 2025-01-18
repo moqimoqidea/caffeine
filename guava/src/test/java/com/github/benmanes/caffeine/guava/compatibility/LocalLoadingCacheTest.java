@@ -25,6 +25,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.jspecify.annotations.NullUnmarked;
+
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.guava.CaffeinatedGuava;
 import com.google.common.cache.CacheLoader;
@@ -41,6 +43,7 @@ import junit.framework.TestCase;
 /**
  * @author Charles Fry
  */
+@NullUnmarked
 @SuppressWarnings("JUnit3FloatingPointComparisonWithoutDelta")
 public class LocalLoadingCacheTest extends TestCase {
   static final CacheStats EMPTY_STATS = new CacheStats(0, 0, 0, 0, 0, 0);
@@ -51,7 +54,7 @@ public class LocalLoadingCacheTest extends TestCase {
     return CaffeinatedGuava.build(builder, loader);
   }
 
-  private Caffeine<Object, Object> createCacheBuilder() {
+  private static Caffeine<Object, Object> createCacheBuilder() {
     return Caffeine.newBuilder().executor(MoreExecutors.directExecutor()).recordStats();
   }
 
@@ -69,7 +72,7 @@ public class LocalLoadingCacheTest extends TestCase {
 
   // null parameters test
 
-  public void testNullParameters() throws Exception {
+  public void testNullParameters() {
     NullPointerTester tester = new NullPointerTester();
     CacheLoader<Object, Object> loader = identityLoader();
     tester.testAllPublicInstanceMethods(makeCache(createCacheBuilder(), loader));
@@ -280,8 +283,9 @@ public class LocalLoadingCacheTest extends TestCase {
   }
 
   // Bug in JDK8; fixed but not released as of 1.8.0_25-b17
+  @SuppressWarnings("MemberName")
   public void disabled_testRecursiveComputation() throws InterruptedException {
-    final AtomicReference<LoadingCache<Integer, String>> cacheRef =
+    AtomicReference<LoadingCache<Integer, String>> cacheRef =
         new AtomicReference<LoadingCache<Integer, String>>();
     CacheLoader<Integer, String> recursiveLoader = new CacheLoader<Integer, String>() {
       @Override
@@ -313,7 +317,7 @@ public class LocalLoadingCacheTest extends TestCase {
     cacheRef.set(recursiveCache);
 
     // tells the test when the compution has completed
-    final CountDownLatch doneSignal = new CountDownLatch(1);
+    CountDownLatch doneSignal = new CountDownLatch(1);
 
     Thread thread = new Thread() {
       @Override

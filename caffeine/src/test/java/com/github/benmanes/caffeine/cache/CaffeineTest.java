@@ -15,10 +15,10 @@
  */
 package com.github.benmanes.caffeine.cache;
 
+import static com.github.benmanes.caffeine.testing.LoggingEvents.logEvents;
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth8.assertThat;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verify;
 import static org.slf4j.event.Level.WARN;
 
@@ -28,11 +28,8 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.Mockito;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import com.github.benmanes.caffeine.cache.stats.StatsCounter;
@@ -47,7 +44,6 @@ import com.github.benmanes.caffeine.cache.testing.CacheSpec.Listener;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Maximum;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Population;
 import com.github.valfirst.slf4jtest.TestLoggerFactory;
-import com.google.common.collect.Iterables;
 import com.google.common.testing.FakeTicker;
 import com.google.common.testing.NullPointerTester;
 
@@ -57,16 +53,12 @@ import com.google.common.testing.NullPointerTester;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 public final class CaffeineTest {
-  @Mock StatsCounter statsCounter;
-  @Mock Expiry<Object, Object> expiry;
-  @Mock CacheLoader<Object, Object> loader;
+  private static final Expiry<Object, Object> expiry = Expiry.accessing(
+      (key, value) -> { throw new AssertionError(); });
+  private static final CacheLoader<Object, Object> loader =
+      key -> { throw new AssertionError(); };
 
-  @BeforeClass
-  public void beforeClass() throws Exception {
-    MockitoAnnotations.openMocks(this).close();
-  }
-
-  @BeforeMethod @AfterMethod
+  @AfterMethod
   public void reset() {
     TestLoggerFactory.clear();
   }
@@ -105,6 +97,7 @@ public final class CaffeineTest {
   }
 
   @Test
+  @SuppressWarnings("NullAway")
   public void fromSpec_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.from((CaffeineSpec) null));
   }
@@ -113,12 +106,12 @@ public final class CaffeineTest {
   public void fromSpec_lenientParsing() {
     var cache = Caffeine.from(CaffeineSpec.parse("maximumSize=100")).weigher((k, v) -> 0).build();
     assertThat(cache).isNotNull();
-
-    var event = Iterables.getOnlyElement(TestLoggerFactory.getLoggingEvents());
-    assertThat(event.getFormattedMessage())
-        .isEqualTo("ignoring weigher specified without maximumWeight");
-    assertThat(event.getThrowable()).isEmpty();
-    assertThat(event.getLevel()).isEqualTo(WARN);
+    assertThat(logEvents()
+        .withMessage("ignoring weigher specified without maximumWeight")
+        .withoutThrowable()
+        .withLevel(WARN)
+        .exclusively())
+        .hasSize(1);
   }
 
   @Test
@@ -127,6 +120,7 @@ public final class CaffeineTest {
   }
 
   @Test
+  @SuppressWarnings("NullAway")
   public void fromString_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.from((String) null));
   }
@@ -188,6 +182,7 @@ public final class CaffeineTest {
 
   @Test
   public void calculateHashMapCapacity() {
+    @SuppressWarnings("UnnecessaryMethodReference")
     Iterable<Integer> iterable = List.of(1, 2, 3)::iterator;
     assertThat(Caffeine.calculateHashMapCapacity(iterable)).isEqualTo(16);
     assertThat(Caffeine.calculateHashMapCapacity(List.of(1, 2, 3))).isEqualTo(4);
@@ -196,6 +191,7 @@ public final class CaffeineTest {
   /* --------------- loading --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void loading_nullLoader() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().build(null));
   }
@@ -205,13 +201,13 @@ public final class CaffeineTest {
   @Test
   public void async_weakValues() {
     var builder = Caffeine.newBuilder().weakValues();
-    assertThrows(IllegalStateException.class, () -> builder.buildAsync(loader));
+    assertThrows(IllegalStateException.class, builder::buildAsync);
   }
 
   @Test
   public void async_softValues() {
     var builder = Caffeine.newBuilder().softValues();
-    assertThrows(IllegalStateException.class, () -> builder.buildAsync(loader));
+    assertThrows(IllegalStateException.class, builder::buildAsync);
   }
 
   @Test
@@ -224,6 +220,7 @@ public final class CaffeineTest {
   /* --------------- async loader --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void asyncLoader_nullLoader() {
     assertThrows(NullPointerException.class, () ->
         Caffeine.newBuilder().buildAsync((CacheLoader<Object, Object>) null));
@@ -233,6 +230,7 @@ public final class CaffeineTest {
 
   @Test
   public void asyncLoader() {
+    @SuppressWarnings("UnnecessaryMethodReference")
     AsyncCacheLoader<Object, Object> asyncLoader = loader::asyncLoad;
     var cache = Caffeine.newBuilder().buildAsync(asyncLoader);
     assertThat(cache).isNotNull();
@@ -376,6 +374,7 @@ public final class CaffeineTest {
   /* --------------- weigher --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void weigher_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().weigher(null));
   }
@@ -588,6 +587,7 @@ public final class CaffeineTest {
   /* --------------- expiry --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void expireAfter_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().expireAfter(null));
   }
@@ -743,6 +743,7 @@ public final class CaffeineTest {
   /* --------------- scheduler --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void scheduler_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().scheduler(null));
   }
@@ -763,7 +764,7 @@ public final class CaffeineTest {
 
   @Test
   public void scheduler_custom() {
-    Scheduler scheduler = (executor, task, delay, unit) -> DisabledFuture.INSTANCE;
+    Scheduler scheduler = (executor, task, delay, unit) -> DisabledFuture.instance();
     var builder = Caffeine.newBuilder().scheduler(scheduler);
     assertThat(((GuardedScheduler) builder.getScheduler()).delegate).isSameInstanceAs(scheduler);
     assertThat(builder.build()).isNotNull();
@@ -772,6 +773,7 @@ public final class CaffeineTest {
   /* --------------- executor --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void executor_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().executor(null));
   }
@@ -792,6 +794,7 @@ public final class CaffeineTest {
   /* --------------- ticker --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void ticker_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().ticker(null));
   }
@@ -807,12 +810,14 @@ public final class CaffeineTest {
     Ticker ticker = new FakeTicker()::read;
     var builder = Caffeine.newBuilder().ticker(ticker);
     assertThat(builder.ticker).isSameInstanceAs(ticker);
+    assertThat(builder.getTicker()).isSameInstanceAs(Ticker.disabledTicker());
     assertThat(builder.build()).isNotNull();
   }
 
   /* --------------- stats --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void recordStats_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().recordStats(null));
   }
@@ -820,7 +825,7 @@ public final class CaffeineTest {
   @Test
   public void recordStats_twice() {
     var type = IllegalStateException.class;
-    Supplier<StatsCounter> supplier = () -> statsCounter;
+    Supplier<StatsCounter> supplier = Mockito::mock;
     assertThrows(type, () -> Caffeine.newBuilder().recordStats().recordStats());
     assertThrows(type, () -> Caffeine.newBuilder().recordStats(supplier).recordStats());
     assertThrows(type, () -> Caffeine.newBuilder().recordStats().recordStats(supplier));
@@ -836,9 +841,19 @@ public final class CaffeineTest {
 
   @Test
   public void recordStats_custom() {
-    Supplier<StatsCounter> supplier = () -> statsCounter;
-    var builder = Caffeine.newBuilder().recordStats(supplier);
-    builder.statsCounterSupplier.get().recordEviction(1, RemovalCause.SIZE);
+    StatsCounter statsCounter = Mockito.mock();
+    var builder = Caffeine.newBuilder().recordStats(() -> statsCounter);
+    assertThat(builder.statsCounterSupplier).isNotNull();
+
+    var counter1 = builder.statsCounterSupplier.get();
+    var counter2 = builder.statsCounterSupplier.get();
+    assertThat(counter1).isNotSameInstanceAs(counter2);
+    assertThat(counter1).isNotNull();
+    assertThat(counter2).isNotNull();
+
+    assertThat(counter1.getClass().getName())
+        .isEqualTo("com.github.benmanes.caffeine.cache.stats.GuardedStatsCounter");
+    counter1.recordEviction(1, RemovalCause.SIZE);
     verify(statsCounter).recordEviction(1, RemovalCause.SIZE);
     assertThat(builder.build()).isNotNull();
   }
@@ -846,6 +861,7 @@ public final class CaffeineTest {
   /* --------------- removalListener --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void removalListener_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().removalListener(null));
   }
@@ -867,6 +883,7 @@ public final class CaffeineTest {
   /* --------------- evictionListener --------------- */
 
   @Test
+  @SuppressWarnings("NullAway")
   public void evictionListener_null() {
     assertThrows(NullPointerException.class, () -> Caffeine.newBuilder().evictionListener(null));
   }

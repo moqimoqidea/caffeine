@@ -18,12 +18,16 @@ package com.github.benmanes.caffeine.cache;
 import static com.github.benmanes.caffeine.cache.LinkedDequeSubject.deque;
 import static com.github.benmanes.caffeine.testing.Awaits.await;
 import static com.github.benmanes.caffeine.testing.MapSubject.map;
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.Objects.requireNonNull;
 
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.Async.AsyncWeigher;
 import com.github.benmanes.caffeine.cache.BoundedLocalCache.BoundedLocalAsyncCache;
@@ -36,7 +40,8 @@ import com.github.benmanes.caffeine.cache.TimerWheel.Sentinel;
 import com.github.benmanes.caffeine.cache.UnboundedLocalCache.UnboundedLocalAsyncCache;
 import com.github.benmanes.caffeine.cache.UnboundedLocalCache.UnboundedLocalAsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.UnboundedLocalCache.UnboundedLocalManualCache;
-import com.github.benmanes.caffeine.cache.testing.Weighers;
+import com.github.benmanes.caffeine.cache.stats.StatsCounter;
+import com.github.benmanes.caffeine.cache.testing.Weighers.SkippedWeigher;
 import com.google.common.collect.ImmutableTable;
 import com.google.common.collect.Sets;
 import com.google.common.truth.FailureMetadata;
@@ -52,9 +57,9 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 public final class LocalCacheSubject extends Subject {
   private final Object actual;
 
-  private LocalCacheSubject(FailureMetadata metadata, Object subject) {
+  private LocalCacheSubject(FailureMetadata metadata, @Nullable Object subject) {
     super(metadata, subject);
-    this.actual = subject;
+    this.actual = requireNonNull(subject);
   }
 
   public static Factory<LocalCacheSubject, AsyncCache<?, ?>> asyncLocal() {
@@ -110,6 +115,16 @@ public final class LocalCacheSubject extends Subject {
     }
   }
 
+  private static void checkStats(LocalCache<?, ?> cache) {
+    if (cache.isRecordingStats()) {
+      assertThat(cache.statsTicker()).isSameInstanceAs(Ticker.systemTicker());
+      assertThat(cache.statsCounter()).isNotSameInstanceAs(StatsCounter.disabledStatsCounter());
+    } else {
+      assertThat(cache.statsTicker()).isSameInstanceAs(Ticker.disabledTicker());
+      assertThat(cache.statsCounter()).isSameInstanceAs(StatsCounter.disabledStatsCounter());
+    }
+  }
+
   /* --------------- Bounded --------------- */
 
   private void checkBounded(BoundedLocalCache<Object, Object> bounded) {
@@ -117,11 +132,12 @@ public final class LocalCacheSubject extends Subject {
     checkReadBuffer(bounded);
 
     checkCache(bounded);
+    checkStats(bounded);
     checkTimerWheel(bounded);
     checkEvictionDeque(bounded);
   }
 
-  private void drain(BoundedLocalCache<Object, Object> bounded) {
+  private static void drain(BoundedLocalCache<Object, Object> bounded) {
     long adjustment = 0;
     for (;;) {
       bounded.cleanUp();
@@ -136,13 +152,13 @@ public final class LocalCacheSubject extends Subject {
     }
   }
 
-  private void checkReadBuffer(BoundedLocalCache<Object, Object> bounded) {
+  private static void checkReadBuffer(BoundedLocalCache<Object, Object> bounded) {
     if (!tryDrainBuffers(bounded)) {
       await().pollInSameThread().until(() -> tryDrainBuffers(bounded));
     }
   }
 
-  private Boolean tryDrainBuffers(BoundedLocalCache<Object, Object> bounded) {
+  private static boolean tryDrainBuffers(BoundedLocalCache<Object, Object> bounded) {
     bounded.cleanUp();
     var buffer = bounded.readBuffer;
     return (buffer.size() == 0) && (buffer.reads() == buffer.writes());
@@ -223,7 +239,7 @@ public final class LocalCacheSubject extends Subject {
     check("cache.size() == timerWheel.size()").that(bounded).hasSize(seen.size());
   }
 
-  private boolean doesTimerWheelMatch(BoundedLocalCache<Object, Object> bounded) {
+  private static boolean doesTimerWheelMatch(BoundedLocalCache<Object, Object> bounded) {
     bounded.evictionLock.lock();
     try {
       var seen = Sets.newIdentityHashSet();
@@ -254,7 +270,7 @@ public final class LocalCacheSubject extends Subject {
           .put("probation", mainProbation, bounded.accessOrderProbationDeque())
           .put("protected", bounded.mainProtectedWeightedSize(),
               bounded.accessOrderProtectedDeque())
-          .build();
+          .buildOrThrow();
       checkLinks(bounded, deques);
       check("accessOrderWindowDeque()").about(deque())
           .that(bounded.accessOrderWindowDeque()).isValid();
@@ -285,10 +301,12 @@ public final class LocalCacheSubject extends Subject {
     long totalWeightedSize = 0;
     Set<Node<Object, Object>> seen = Sets.newIdentityHashSet();
     for (var cell : deques.cellSet()) {
-      long weightedSize = scanLinks(bounded, cell.getValue(), seen);
-      check(cell.getRowKey()).that(weightedSize).isEqualTo(cell.getColumnKey());
-      totalSize += cell.getValue().size();
+      var deque = requireNonNull(cell.getValue());
+      long weightedSize = scanLinks(bounded, deque, seen);
+      check("%s: %s in %s", cell.getRowKey(), deque, bounded.data)
+          .that(weightedSize).isEqualTo(cell.getColumnKey());
       totalWeightedSize += weightedSize;
+      totalSize += deque.size();
     }
     check("linkSize").withMessage("cache.size() != links").that(bounded).hasSize(seen.size());
     check("totalSize").withMessage("cache.size() == deque.size()").that(bounded).hasSize(totalSize);
@@ -340,7 +358,7 @@ public final class LocalCacheSubject extends Subject {
   }
 
   private void checkKey(BoundedLocalCache<Object, Object> bounded,
-      Node<Object, Object> node, Object key, Object value) {
+      Node<Object, Object> node, @Nullable Object key, @Nullable Object value) {
     if (bounded.collectKeys()) {
       if ((key != null) && (value != null)) {
         check("bounded").that(bounded).containsKey(key);
@@ -354,10 +372,11 @@ public final class LocalCacheSubject extends Subject {
   }
 
   private void checkValue(BoundedLocalCache<Object, Object> bounded,
-      Node<Object, Object> node, Object key, Object value) {
+      Node<Object, Object> node, @Nullable Object key, @Nullable Object value) {
     if (!bounded.collectValues()) {
       check("value").that(value).isNotNull();
       if ((key != null) && !bounded.hasExpired(node, bounded.expirationTicker().read())) {
+        requireNonNull(value);
         check("containsValue(value) for key %s", key)
             .about(map()).that(bounded).containsValue(value);
       }
@@ -365,7 +384,7 @@ public final class LocalCacheSubject extends Subject {
     checkIfAsyncValue(value);
   }
 
-  private void checkIfAsyncValue(Object value) {
+  private void checkIfAsyncValue(@Nullable Object value) {
     if (value instanceof CompletableFuture<?>) {
       var future = (CompletableFuture<?>) value;
       if (!future.isDone() || future.isCompletedExceptionally()) {
@@ -376,18 +395,22 @@ public final class LocalCacheSubject extends Subject {
   }
 
   private void checkWeight(BoundedLocalCache<Object, Object> bounded,
-      Node<Object, Object> node, Object key, Object value) {
+      Node<Object, Object> node, @Nullable Object key, @Nullable Object value) {
     check("node.getWeight").that(node.getWeight()).isAtLeast(0);
-
-    var weigher = bounded.weigher;
-    boolean canCheckWeight = (weigher == Weighers.random());
-    if (weigher instanceof AsyncWeigher) {
-      @SuppressWarnings("rawtypes")
-      var asyncWeigher = (AsyncWeigher) weigher;
-      canCheckWeight = (asyncWeigher.delegate == Weighers.random());
+    if ((key == null) || (value == null)) {
+      return;
     }
-    if (canCheckWeight) {
-      check("node.getWeight()").that(node.getWeight()).isEqualTo(weigher.weigh(key, value));
+
+    Weigher<?, ?> weigher = bounded.weigher;
+    if (weigher instanceof AsyncWeigher) {
+      weigher = ((AsyncWeigher<?, ?>) weigher).delegate;
+    }
+    if (weigher instanceof BoundedWeigher) {
+      weigher = ((BoundedWeigher<?, ?>) weigher).delegate;
+    }
+    if (!(weigher instanceof SkippedWeigher)) {
+      int weight = bounded.weigher.weigh(key, value);
+      check("node.getWeight()").that(node.getWeight()).isEqualTo(weight);
     }
   }
 
@@ -400,7 +423,7 @@ public final class LocalCacheSubject extends Subject {
 
   /* --------------- Unbounded --------------- */
 
-  public void checkUnbounded(UnboundedLocalCache<?, ?> unbounded) {
+  private void checkUnbounded(UnboundedLocalCache<?, ?> unbounded) {
     if (unbounded.isEmpty()) {
       check("unbounded").about(map()).that(unbounded).isExhaustivelyEmpty();
     }
@@ -409,5 +432,6 @@ public final class LocalCacheSubject extends Subject {
       check("value").that(value).isNotNull();
       checkIfAsyncValue(value);
     });
+    checkStats(unbounded);
   }
 }

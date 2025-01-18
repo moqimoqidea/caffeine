@@ -18,7 +18,8 @@ package com.github.benmanes.caffeine.cache;
 import static com.github.benmanes.caffeine.testing.CollectionSubject.assertThat;
 import static com.google.common.collect.Iterators.elementsEqual;
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
+import static java.util.Objects.requireNonNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,6 +30,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ThreadLocalRandom;
 
+import org.jspecify.annotations.Nullable;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -45,6 +47,7 @@ import com.google.common.collect.Iterators;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@SuppressWarnings({"ClassEscapesDefinedScope", "PMD.LooseCoupling"})
 public final class LinkedDequeTest {
   static final int SIZE = 100;
 
@@ -114,7 +117,9 @@ public final class LinkedDequeTest {
     checkMoveToFront(deque, deque.getLast());
   }
 
-  private void checkMoveToFront(LinkedDeque<LinkedValue> deque, LinkedValue element) {
+  private static void checkMoveToFront(LinkedDeque<LinkedValue> deque,
+      @Nullable LinkedValue element) {
+    assertThat(element).isNotNull();
     deque.moveToFront(element);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.peekFirst()).isEqualTo(element);
@@ -135,7 +140,9 @@ public final class LinkedDequeTest {
     checkMoveToBack(deque, deque.getLast());
   }
 
-  private void checkMoveToBack(LinkedDeque<LinkedValue> deque, LinkedValue element) {
+  private static void checkMoveToBack(LinkedDeque<LinkedValue> deque,
+      @Nullable LinkedValue element) {
+    assertThat(element).isNotNull();
     deque.moveToBack(element);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.getLast()).isEqualTo(element);
@@ -151,7 +158,7 @@ public final class LinkedDequeTest {
 
   @Test(dataProvider = "full")
   public void isFirst_whenPopulated(AbstractLinkedDeque<LinkedValue> deque) {
-    var first = deque.first;
+    var first = requireNonNull(deque.first);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.isFirst(first)).isTrue();
     assertThat(deque.contains(first)).isTrue();
@@ -166,7 +173,7 @@ public final class LinkedDequeTest {
 
   @Test(dataProvider = "full")
   public void isLast_whenPopulated(AbstractLinkedDeque<LinkedValue> deque) {
-    var last = deque.last;
+    var last = requireNonNull(deque.last);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.isLast(last)).isTrue();
     assertThat(deque.contains(last)).isTrue();
@@ -182,7 +189,7 @@ public final class LinkedDequeTest {
 
   @Test(dataProvider = "full")
   public void peek_whenPopulated(AbstractLinkedDeque<LinkedValue> deque) {
-    var first = deque.first;
+    var first = requireNonNull(deque.first);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.contains(first)).isTrue();
     assertThat(deque.first).isSameInstanceAs(first);
@@ -196,7 +203,7 @@ public final class LinkedDequeTest {
 
   @Test(dataProvider = "full")
   public void peekFirst_whenPopulated(AbstractLinkedDeque<LinkedValue> deque) {
-    var first = deque.first;
+    var first = requireNonNull(deque.first);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.contains(first)).isTrue();
     assertThat(deque.first).isSameInstanceAs(first);
@@ -210,7 +217,7 @@ public final class LinkedDequeTest {
 
   @Test(dataProvider = "full")
   public void peekLast_whenPopulated(AbstractLinkedDeque<LinkedValue> deque) {
-    var last = deque.last;
+    var last = requireNonNull(deque.last);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.contains(last)).isTrue();
     assertThat(deque.last).isSameInstanceAs(last);
@@ -226,7 +233,7 @@ public final class LinkedDequeTest {
 
   @Test(dataProvider = "full")
   public void getFirst_whenPopulated(AbstractLinkedDeque<LinkedValue> deque) {
-    var first = deque.first;
+    var first = requireNonNull(deque.first);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.contains(first)).isTrue();
     assertThat(deque.first).isSameInstanceAs(first);
@@ -240,7 +247,7 @@ public final class LinkedDequeTest {
 
   @Test(dataProvider = "full")
   public void getLast_whenPopulated(AbstractLinkedDeque<LinkedValue> deque) {
-    var last = deque.last;
+    var last = requireNonNull(deque.last);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.contains(last)).isTrue();
     assertThat(deque.last).isSameInstanceAs(last);
@@ -256,7 +263,7 @@ public final class LinkedDequeTest {
 
   @Test(dataProvider = "full")
   public void element_whenPopulated(AbstractLinkedDeque<LinkedValue> deque) {
-    var first = deque.first;
+    var first = requireNonNull(deque.first);
     assertThat(deque).hasSize(SIZE);
     assertThat(deque.contains(first)).isTrue();
     assertThat(deque.first).isSameInstanceAs(first);
@@ -861,34 +868,34 @@ public final class LinkedDequeTest {
   static final class LinkedValue implements AccessOrder<LinkedValue>, WriteOrder<LinkedValue> {
     final int value;
 
-    LinkedValue prev;
-    LinkedValue next;
+    @Nullable LinkedValue prev;
+    @Nullable LinkedValue next;
 
     LinkedValue(int value) {
       this.value = value;
     }
-    @Override public LinkedValue getPreviousInAccessOrder() {
+    @Override public @Nullable LinkedValue getPreviousInAccessOrder() {
       return prev;
     }
-    @Override public void setPreviousInAccessOrder(LinkedValue prev) {
+    @Override public void setPreviousInAccessOrder(@Nullable LinkedValue prev) {
       this.prev = prev;
     }
-    @Override public LinkedValue getNextInAccessOrder() {
+    @Override public @Nullable LinkedValue getNextInAccessOrder() {
       return next;
     }
-    @Override public void setNextInAccessOrder(LinkedValue next) {
+    @Override public void setNextInAccessOrder(@Nullable LinkedValue next) {
       this.next = next;
     }
-    @Override public LinkedValue getPreviousInWriteOrder() {
+    @Override public @Nullable LinkedValue getPreviousInWriteOrder() {
       return prev;
     }
-    @Override public void setPreviousInWriteOrder(LinkedValue prev) {
+    @Override public void setPreviousInWriteOrder(@Nullable LinkedValue prev) {
       this.prev = prev;
     }
-    @Override public LinkedValue getNextInWriteOrder() {
+    @Override public @Nullable LinkedValue getNextInWriteOrder() {
       return next;
     }
-    @Override public void setNextInWriteOrder(LinkedValue next) {
+    @Override public void setNextInWriteOrder(@Nullable LinkedValue next) {
       this.next = next;
     }
     @Override public boolean equals(Object o) {

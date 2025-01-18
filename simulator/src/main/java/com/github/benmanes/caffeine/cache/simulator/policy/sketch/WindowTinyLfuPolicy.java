@@ -16,14 +16,17 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.sketch;
 
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.util.List;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
+import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
-import com.github.benmanes.caffeine.cache.simulator.admission.TinyLfu;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
@@ -68,9 +71,10 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
   private int sizeWindow;
   private int sizeProtected;
 
+  @SuppressWarnings("Varifier")
   public WindowTinyLfuPolicy(double percentMain, WindowTinyLfuSettings settings) {
     this.policyStats = new PolicyStats(name() + " (%.0f%%)", 100 * (1.0d - percentMain));
-    this.admittor = new TinyLfu(settings.config(), policyStats);
+    this.admittor = Admission.TINYLFU.from(settings.config(), policyStats);
     this.maximumSize = Math.toIntExact(settings.maximumSize());
 
     int maxMain = (int) (maximumSize * percentMain);
@@ -84,7 +88,7 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
 
   /** Returns all variations of this policy based on the configuration parameters. */
   public static Set<Policy> policies(Config config) {
-    WindowTinyLfuSettings settings = new WindowTinyLfuSettings(config);
+    var settings = new WindowTinyLfuSettings(config);
     return settings.percentMain().stream()
         .map(percentMain -> new WindowTinyLfuPolicy(percentMain, settings))
         .collect(toUnmodifiableSet());
@@ -120,7 +124,7 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
   private void onMiss(long key) {
     admittor.record(key);
 
-    Node node = new Node(key, Status.WINDOW);
+    var node = new Node(key, Status.WINDOW);
     node.appendToTail(headWindow);
     data.put(key, node);
     sizeWindow++;
@@ -143,7 +147,7 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
 
     sizeProtected++;
     if (sizeProtected > maxProtected) {
-      Node demote = headProtected.next;
+      Node demote = requireNonNull(headProtected.next);
       demote.remove();
       demote.status = Status.PROBATION;
       demote.appendToTail(headProbation);
@@ -166,7 +170,7 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
       return;
     }
 
-    Node candidate = headWindow.next;
+    Node candidate = requireNonNull(headWindow.next);
     sizeWindow--;
 
     candidate.remove();
@@ -174,7 +178,7 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
     candidate.appendToTail(headProbation);
 
     if (data.size() > maximumSize) {
-      Node victim = headProbation.next;
+      Node victim = requireNonNull(headProbation.next);
       Node evict = admittor.admit(candidate.key, victim.key) ? victim : candidate;
       data.remove(evict.key);
       evict.remove();
@@ -204,9 +208,9 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
   static final class Node {
     final long key;
 
-    Status status;
-    Node prev;
-    Node next;
+    @Nullable Node prev;
+    @Nullable Node next;
+    @Nullable Status status;
 
     /** Creates a new sentinel node. */
     public Node() {
@@ -228,6 +232,7 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
 
     /** Appends the node to the tail of the list. */
     public void appendToTail(Node head) {
+      requireNonNull(head.prev);
       Node tail = head.prev;
       head.prev = this;
       tail.next = this;
@@ -237,6 +242,9 @@ public final class WindowTinyLfuPolicy implements KeyOnlyPolicy {
 
     /** Removes the node from the list. */
     public void remove() {
+      requireNonNull(prev);
+      requireNonNull(next);
+
       prev.next = next;
       next.prev = prev;
       next = prev = null;

@@ -19,10 +19,8 @@ import static java.util.Locale.US;
 
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.Stack;
-import java.util.TreeMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -30,6 +28,8 @@ import com.github.benmanes.caffeine.cache.simulator.report.csv.CombinedCsvReport
 import com.github.benmanes.caffeine.cache.simulator.report.csv.PlotCsv;
 import com.github.benmanes.caffeine.cache.simulator.report.csv.PlotCsv.ChartStyle;
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 import com.typesafe.config.ConfigFactory;
 
 import picocli.CommandLine;
@@ -44,7 +44,7 @@ import picocli.CommandLine.Option;
  * A command that runs multiple simulations, writes the result to a csv file, and renders a chart.
  * An underscore may be used as a numeric separator and the default configuration may be overridden
  * by using system properties.
- * <p>
+ *
  * <pre>{@code
  *   ./gradlew simulator:simulate -q \
  *     -Dcaffeine.simulator.files.paths.0="lirs:gli.trace.gz" \
@@ -58,6 +58,7 @@ import picocli.CommandLine.Option;
  */
 @Command(mixinStandardHelpOptions = true)
 public final class Simulate implements Runnable {
+  @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
   @Option(names = "--maximumSize", required = true, split = ",",
       description = "The maximum sizes", preprocessor = LongPreprocessor.class)
   private SortedSet<Long> maximumSizes;
@@ -75,14 +76,12 @@ public final class Simulate implements Runnable {
   @Override
   public void run() {
     var baseName = metric.toLowerCase(US).replace(' ', '_');
-    var reports = new TreeMap<Long, Path>();
-    for (long maximumSize : maximumSizes) {
+    var reports = Maps.toMap(maximumSizes, maximumSize -> {
       var stopwatch = Stopwatch.createStarted();
       var report = simulate(baseName, maximumSize);
-      reports.put(maximumSize, report);
-
       System.out.printf(US, "%,d: Executed in %s%n", maximumSize, stopwatch);
-    }
+      return report;
+    });
 
     if (reports.size() == 1) {
       System.out.printf(US, "Did not generate a chart as only one data point%n");
@@ -111,7 +110,7 @@ public final class Simulate implements Runnable {
   }
 
   /** Returns a combined report from the individual runs. */
-  private Path combineReports(String baseName, SortedMap<Long, Path> inputFiles) {
+  private Path combineReports(String baseName, ImmutableMap<Long, Path> inputFiles) {
     var report = outputDir.resolve(baseName + ".csv");
     var combiner = new CombinedCsvReport(inputFiles, metric, report);
     combiner.run();
@@ -148,7 +147,6 @@ public final class Simulate implements Runnable {
   }
 
   private static final class LongPreprocessor implements IParameterPreprocessor {
-    @SuppressWarnings("PMD.ReplaceVectorWithList")
     @Override public boolean preprocess(Stack<String> args,
         CommandSpec commandSpec, ArgSpec argSpec, Map<String, Object> info) {
       args.replaceAll(arg -> arg.replace("_", ""));

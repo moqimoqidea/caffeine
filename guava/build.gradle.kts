@@ -1,21 +1,32 @@
 /** Guava compatibility adapter. The tests are forked from Guava commit e370dde. */
 import de.thetaphi.forbiddenapis.gradle.CheckForbiddenApis
+import net.ltgt.gradle.errorprone.errorprone
 
 plugins {
-  id("java-library-caffeine-conventions")
+  id("java-library.caffeine")
 }
 
 dependencies {
   api(project(":caffeine"))
   api(libs.guava)
 
-  testImplementation(libs.jctools)
   testImplementation(libs.guava.testlib)
   testImplementation(libs.bundles.slf4j.nop)
+  testImplementation(libs.bundles.osgi.test.compile)
+
+  testRuntimeOnly(libs.bundles.osgi.test.runtime)
+  testRuntimeOnly(libs.bundles.junit.engines)
 }
 
 tasks.named<JavaCompile>("compileJava").configure {
-  modularity.inferModulePath = true
+  options.compilerArgs.add("-Xlint:-requires-automatic")
+}
+
+tasks.named<JavaCompile>("compileTestJava").configure {
+  options.errorprone {
+    disable("Varifier")
+    disable("Var")
+  }
 }
 
 tasks.withType<Test>().configureEach {
@@ -42,12 +53,6 @@ tasks.jar {
       "com.google.common.*;version=23.2").joinToString(","),
     "Export-Package" to "com.github.benmanes.caffeine.guava",
     "Automatic-Module-Name" to "com.github.benmanes.caffeine.guava"))
-}
-
-tasks.withType<Javadoc>().configureEach {
-  javadocOptions {
-    addStringOption("Xdoclint:none", "-quiet")
-  }
 }
 
 tasks.named<CheckForbiddenApis>("forbiddenApisMain").configure {

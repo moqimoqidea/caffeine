@@ -19,7 +19,7 @@ import static com.github.benmanes.caffeine.cache.Caffeine.UNSET_INT;
 import static com.google.common.truth.Truth.assertThat;
 import static java.util.Locale.US;
 import static java.util.Objects.requireNonNull;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -65,8 +65,40 @@ public final class CaffeineSpecTest {
   }
 
   @Test
-  public void parseTimeUnit_exception() {
-    assertThrows(IllegalArgumentException.class, () -> CaffeineSpec.parseTimeUnit("key", "value"));
+  public void parseDuration_exception() {
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseDuration("key", "value"));
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseTimeUnit("key", "value"));
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseIsoDuration("key", "value"));
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseSimpleDuration("key", "value"));
+
+    // ISO
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseDuration("key", "-PT7H3M"));
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseDuration("key", "p3xyz"));
+
+    // Simple
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseDuration("key", "-1s"));
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseDuration("key", "xyzs"));
+    assertThrows(IllegalArgumentException.class,
+        () -> CaffeineSpec.parseDuration("key", "1xyzs"));
+  }
+
+  @Test
+  @SuppressWarnings("NullAway")
+  public void parse_exception() {
+    assertThrows(NullPointerException.class, () -> CaffeineSpec.parse(null));
+    assertThrows(IllegalArgumentException.class, () -> CaffeineSpec.parse("="));
+    assertThrows(IllegalArgumentException.class, () -> CaffeineSpec.parse("=="));
+    assertThrows(IllegalArgumentException.class, () -> CaffeineSpec.parse("key="));
+    assertThrows(IllegalArgumentException.class, () -> CaffeineSpec.parse("=value"));
+    assertThrows(IllegalArgumentException.class, () -> CaffeineSpec.parse("key=value="));
   }
 
   @Test(dataProvider = "caches")
@@ -101,15 +133,16 @@ public final class CaffeineSpecTest {
     runScenarios(context, new Epoch(TimeUnit.DAYS, "d"));
   }
 
-  private void runScenarios(CacheContext context, Epoch epoch) {
+  private static void runScenarios(CacheContext context, Epoch epoch) {
     runTest(context, epoch, duration -> epoch.toUnitString(duration).toLowerCase(US));
     runTest(context, epoch, duration -> epoch.toUnitString(duration).toUpperCase(US));
     runTest(context, epoch, duration -> epoch.truncate(duration).toString().toLowerCase(US));
     runTest(context, epoch, duration -> epoch.truncate(duration).toString().toUpperCase(US));
   }
 
-  private void runTest(CacheContext context, Epoch epoch, Function<Duration, String> formatter) {
-    CaffeineSpec spec = toSpec(context, epoch, formatter);
+  private static void runTest(CacheContext context,
+      Epoch epoch, Function<Duration, String> formatter) {
+    CaffeineSpec spec = toSpec(context, formatter);
     Caffeine<Object, Object> builder = Caffeine.from(spec);
 
     checkInitialCapacity(spec, context, builder);
@@ -122,10 +155,10 @@ public final class CaffeineSpecTest {
     checkRefreshAfterWrite(spec, context, builder, epoch);
 
     assertThat(spec).isEqualTo(CaffeineSpec.parse(spec.toParsableString()));
+    assertThat(spec).isEqualTo(CaffeineSpec.parse(spec.toParsableString().replaceAll(",", ",,")));
   }
 
-  static CaffeineSpec toSpec(CacheContext context,
-      Epoch epoch, Function<Duration, String> formatter) {
+  static CaffeineSpec toSpec(CacheContext context, Function<Duration, String> formatter) {
     var options = new ArrayList<String>();
     if (context.initialCapacity() != InitialCapacity.DEFAULT) {
       options.add("initialCapacity=" + context.initialCapacity().size());

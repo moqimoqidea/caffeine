@@ -24,6 +24,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.Collection;
 import java.util.Queue;
@@ -37,9 +38,9 @@ import org.junit.Test;
 /**
  * @author nitsanw@yahoo.com (Nitsan Wakart)
  */
-@SuppressWarnings({"deprecation", "PreferJavaTimeOverload", "ThreadPriorityCheck"})
+@SuppressWarnings({"deprecation", "PMD.AbstractClassWithoutAbstractMethod",
+    "PreferJavaTimeOverload", "ThreadPriorityCheck"})
 public abstract class QueueSanityTest {
-
   public static final int SIZE = 8192 * 2;
 
   private final Queue<Integer> queue;
@@ -87,7 +88,6 @@ public abstract class QueueSanityTest {
     } else {
       // expect sum of elements is (size - 1) * size / 2 = 0 + 1 + .... + (size - 1)
       int sum = (size - 1) * size / 2;
-      i = 0;
       Integer e;
       while ((e = queue.poll()) != null) {
         assertEquals(--size, queue.size());
@@ -100,7 +100,7 @@ public abstract class QueueSanityTest {
   }
 
   @Test
-  public void testSizeIsTheNumberOfOffers() {
+  public void sizeIsTheNumberOfOffers() {
     int currentSize = 0;
     while (currentSize < SIZE && queue.offer(currentSize)) {
       currentSize++;
@@ -117,13 +117,13 @@ public abstract class QueueSanityTest {
     while (i < SIZE && queue.offer(i)) {
       i++;
     }
-    final int size = queue.size();
+    int size = queue.size();
 
     // Act
     i = 0;
     Integer prev;
     while ((prev = queue.peek()) != null) {
-      final Integer item = queue.poll();
+      Integer item = queue.poll();
 
       assertThat(item, is(prev));
       assertThat(queue, hasSize(size - (i + 1)));
@@ -135,9 +135,9 @@ public abstract class QueueSanityTest {
     assertThat(i, is(size));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void offerNullResultsInNPE() {
-    queue.offer(null);
+    assertThrows(NullPointerException.class, () -> queue.offer(null));
   }
 
   @Test
@@ -145,12 +145,12 @@ public abstract class QueueSanityTest {
     assertThat(queue, emptyAndZeroSize());
 
     // Act
-    final Integer e = 1876876;
+    Integer e = 1_876_876;
     queue.offer(e);
     assertFalse(queue.isEmpty());
     assertEquals(1, queue.size());
 
-    final Integer oh = queue.poll();
+    Integer oh = queue.poll();
     assertEquals(e, oh);
 
     // Assert
@@ -159,7 +159,7 @@ public abstract class QueueSanityTest {
   }
 
   @Test
-  public void testPowerOf2Capacity() {
+  public void powerOf2Capacity() {
     assumeThat(isBounded, is(true));
     int n = Pow2.roundToPowerOfTwo(capacity);
 
@@ -175,10 +175,10 @@ public abstract class QueueSanityTest {
 
   @Test
   @SuppressWarnings({"rawtypes", "unchecked"})
-  public void testHappensBefore() throws InterruptedException {
-    final AtomicBoolean stop = new AtomicBoolean();
-    final Queue q = queue;
-    final Val fail = new Val();
+  public void happensBefore() throws InterruptedException {
+    AtomicBoolean stop = new AtomicBoolean();
+    Queue q = queue;
+    Val fail = new Val();
     Thread t1 = new Thread(new Runnable() {
       @Override public void run() {
         while (!stop.get()) {
@@ -220,10 +220,10 @@ public abstract class QueueSanityTest {
   }
 
   @Test
-  public void testSize() throws InterruptedException {
-    final AtomicBoolean stop = new AtomicBoolean();
-    final Queue<Integer> q = queue;
-    final Val fail = new Val();
+  public void size() throws InterruptedException {
+    AtomicBoolean stop = new AtomicBoolean();
+    Queue<Integer> q = queue;
+    Val fail = new Val();
     Thread t1 = new Thread(new Runnable() {
       @Override
       public void run() {
@@ -256,10 +256,10 @@ public abstract class QueueSanityTest {
   }
 
   @Test
-  public void testPollAfterIsEmpty() throws InterruptedException {
-    final AtomicBoolean stop = new AtomicBoolean();
-    final Queue<Integer> q = queue;
-    final Val fail = new Val();
+  public void pollAfterIsEmpty() throws InterruptedException {
+    AtomicBoolean stop = new AtomicBoolean();
+    Queue<Integer> q = queue;
+    Val fail = new Val();
     Thread t1 = new Thread(new Runnable() {
       @Override
       public void run() {
@@ -296,7 +296,7 @@ public abstract class QueueSanityTest {
     return allOf(hasSize(0), empty());
   }
 
-  enum Ordering {
+  public enum Ordering {
     FIFO
   }
 }

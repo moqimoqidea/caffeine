@@ -21,27 +21,27 @@ import static com.github.benmanes.caffeine.cache.Specifications.TICKER;
 import javax.lang.model.element.Modifier;
 
 import com.github.benmanes.caffeine.cache.Feature;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.MethodSpec;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.MethodSpec;
 
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
-public final class AddStats extends LocalCacheRule {
+public final class AddStats implements LocalCacheRule {
 
   @Override
-  protected boolean applies() {
+  public boolean applies(LocalCacheContext context) {
     return context.generateFeatures.contains(Feature.STATS);
   }
 
   @Override
-  protected void execute() {
-    addIsRecording();
-    addStatsTicker();
-    addStatsCounter();
+  public void execute(LocalCacheContext context) {
+    addIsRecording(context);
+    addStatsTicker(context);
+    addStatsCounter(context);
   }
 
-  private void addIsRecording() {
+  private static void addIsRecording(LocalCacheContext context) {
     context.cache.addMethod(MethodSpec.methodBuilder("isRecordingStats")
         .addModifiers(context.publicFinalModifiers())
         .addStatement("return true")
@@ -49,7 +49,7 @@ public final class AddStats extends LocalCacheRule {
         .build());
   }
 
-  private void addStatsCounter() {
+  private static void addStatsCounter(LocalCacheContext context) {
     context.constructor.addStatement("this.statsCounter = builder.getStatsCounterSupplier().get()");
     context.cache.addField(FieldSpec.builder(
         STATS_COUNTER, "statsCounter", Modifier.FINAL).build());
@@ -60,7 +60,7 @@ public final class AddStats extends LocalCacheRule {
         .build());
   }
 
-  private void addStatsTicker() {
+  private static void addStatsTicker(LocalCacheContext context) {
     context.cache.addMethod(MethodSpec.methodBuilder("statsTicker")
         .addModifiers(context.publicFinalModifiers())
         .addStatement("return $T.systemTicker()", TICKER)

@@ -16,6 +16,7 @@
 package com.github.benmanes.caffeine.jcache.size;
 
 import static com.google.common.truth.Truth.assertThat;
+import static java.util.Objects.requireNonNull;
 
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -32,8 +33,8 @@ import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.MoreExecutors;
 
 /**
- * The test cases that ensure the <tt>maximum weight</tt> setting is honored by the cache and
- * removal notifications are published.
+ * The test cases that ensure the maximum weight setting is honored by the cache and removal
+ * notifications are published.
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
@@ -46,13 +47,13 @@ public final class JCacheMaximumWeightTest extends AbstractJCacheTest {
   @Override
   protected CaffeineConfiguration<Integer, Integer> getConfiguration() {
     CacheEntryRemovedListener<Integer, Integer> listener = events ->
-        removedWeight.addAndGet(Iterables.getOnlyElement(events).getValue());
+        removedWeight.addAndGet(requireNonNull(Iterables.getOnlyElement(events)).getValue());
     var configuration = new CaffeineConfiguration<Integer, Integer>();
     configuration.setMaximumWeight(OptionalLong.of(MAXIMUM));
     configuration.setWeigherFactory(Optional.of(() -> (key, value) -> value));
     var listenerConfiguration = new MutableCacheEntryListenerConfiguration<Integer, Integer>(
-        () -> listener, /* filterFactory */ null,
-        /* isOldValueRequired */ true, /* isSynchronous */ true);
+        () -> listener, /* filterFactory= */ null,
+        /* isOldValueRequired= */ true, /* isSynchronous= */ true);
     configuration.addCacheEntryListenerConfiguration(listenerConfiguration);
     configuration.setExecutorFactory(MoreExecutors::directExecutor);
     return configuration;

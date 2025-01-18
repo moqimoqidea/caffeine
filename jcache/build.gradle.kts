@@ -4,12 +4,24 @@ import org.gradle.plugins.ide.eclipse.model.Classpath
 import org.gradle.plugins.ide.eclipse.model.Library
 
 plugins {
-  id("java-library-caffeine-conventions")
+  id("java-library.caffeine")
+}
+
+sourceSets {
+  create("testResources") {
+    resources.srcDir("src/test/resources-extra")
+  }
 }
 
 val jcacheJavadoc: Configuration by configurations.creating
 val jcacheTckTests: Configuration by configurations.creating
 val jcacheTckSources: Configuration by configurations.creating
+
+val testResourcesJar by tasks.registering(Jar::class) {
+  from(sourceSets["testResources"].output)
+  archiveClassifier = "test-resources"
+  outputs.cacheIf { true }
+}
 
 dependencies {
   api(project(":caffeine"))
@@ -18,32 +30,32 @@ dependencies {
   api(libs.jcache)
   api(libs.config)
 
-  testImplementation(libs.guava)
+  testImplementation(libs.guice)
+  testImplementation(libs.mockito)
   testImplementation(libs.jcache.guice)
   testImplementation(libs.guava.testlib)
   testImplementation(libs.bundles.slf4j.nop)
+  testImplementation(files(testResourcesJar))
+  testImplementation(libs.bundles.awaitility)
+  testImplementation(libs.nullaway.annotations)
+  testImplementation(libs.bundles.osgi.test.compile)
   testImplementation(libs.jcache.tck)
   testImplementation(libs.jcache.tck) {
-    artifact {
-      classifier = "tests"
-    }
+    artifact { classifier = "tests" }
   }
 
+  testRuntimeOnly(libs.bundles.osgi.test.runtime)
+  testRuntimeOnly(libs.bundles.junit.engines)
+
   jcacheJavadoc(libs.jcache) {
-    artifact {
-      classifier = "javadoc"
-    }
+    artifact { classifier = "javadoc" }
   }
   jcacheTckTests(libs.jcache.tck) {
-    artifact {
-      classifier = "tests"
-    }
+    artifact { classifier = "tests" }
     isTransitive = false
   }
   jcacheTckSources(libs.jcache.tck) {
-    artifact {
-      classifier = "test-sources"
-    }
+    artifact { classifier = "test-sources" }
     isTransitive = false
   }
 }
@@ -63,30 +75,27 @@ val unzipJCacheJavaDoc by tasks.registering(Copy::class) {
   into(layout.buildDirectory.dir("jcache-docs"))
 }
 
-tasks.named<JavaCompile>("compileJava").configure {
-  modularity.inferModulePath = true
-}
-
 tasks.jar {
   bundle.bnd(mapOf(
     "Automatic-Module-Name" to "com.github.benmanes.caffeine.jcache",
     "Bundle-SymbolicName" to "com.github.ben-manes.caffeine.jcache",
     "Import-Package" to listOf(
-      "!org.checkerframework.*",
+      "!org.jspecify.annotations.*",
       "!com.google.errorprone.annotations.*",
-      "jakarta.inject.*;resolution:=\"optional\"",
+      "jakarta.inject.*;resolution:=optional",
       "*").joinToString(","),
     "Export-Package" to listOf(
-      "com.github.benmanes.caffeine.jcache.spi",
-      "com.github.benmanes.caffeine.jcache.copy",
-      "com.github.benmanes.caffeine.jcache.configuration").joinToString(","),
+      "com.github.benmanes.caffeine.jcache.spi;uses:=\"!org.jspecify.annotations\"",
+      "com.github.benmanes.caffeine.jcache.copy;uses:=\"!org.jspecify.annotations\"",
+      "com.github.benmanes.caffeine.jcache.configuration;uses:=\"!org.jspecify.annotations\""
+    ).joinToString(","),
     "-exportcontents" to "\${removeall;\${packages;VERSIONED};\${packages;CONDITIONAL}}"))
 }
 
 tasks.named<Javadoc>("javadoc").configure {
   dependsOn(unzipJCacheJavaDoc)
   javadocOptions {
-    addStringOption("Xdoclint:none", "-quiet")
+    addBooleanOption("Xdoclint:all,-missing", true)
     linksOffline("https://static.javadoc.io/javax.cache/cache-api/${libs.versions.jcache.get()}/",
       relativePath(unzipJCacheJavaDoc.map { it.destinationDir }))
   }
@@ -95,7 +104,7 @@ tasks.named<Javadoc>("javadoc").configure {
 tasks.withType<Test>().configureEach {
   useJUnitPlatform()
   dependsOn(unzipTestKit)
-  testClassesDirs += layout.buildDirectory.files("tck")
+  testClassesDirs = files(testClassesDirs, layout.buildDirectory.files("tck"))
 
   project(":caffeine").plugins.withId("java-library") {
     val caffeineJar = project(":caffeine").tasks.named<Jar>("jar")
@@ -134,11 +143,14 @@ tasks.named<CheckForbiddenApis>("forbiddenApisTest").configure {
     "jdk-non-portable", "jdk-reflection", "jdk-unsafe"))
 }
 
-eclipse.classpath.file.whenMerged {
-  if (this is Classpath) {
-    val regex = ".*cache-tests.*-tests.jar".toRegex()
-    entries.filterIsInstance<Library>()
-      .filter { regex.matches(it.path) }
-      .forEach { it.sourcePath = fileReference(file(jcacheTckSources.asPath)) }
+eclipse {
+  classpath.file.whenMerged {
+    if (this is Classpath) {
+      val regex = ".*cache-tests.*-tests.jar".toRegex()
+      entries.filterIsInstance<Library>()
+        .filter { regex.matches(it.path) }
+        .forEach { it.sourcePath = fileReference(file(jcacheTckSources.asPath)) }
+    }
   }
+  synchronizationTasks(testResourcesJar)
 }

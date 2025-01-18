@@ -29,7 +29,7 @@ import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CacheLoader;
 import javax.cache.integration.CacheLoaderException;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.Ticker;
 import com.github.benmanes.caffeine.jcache.CacheProxy;
@@ -43,7 +43,7 @@ import com.github.benmanes.caffeine.jcache.management.JCacheStatisticsMXBean;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 public final class JCacheLoaderAdapter<K, V>
-    implements com.github.benmanes.caffeine.cache.CacheLoader<K, Expirable<V>> {
+    implements com.github.benmanes.caffeine.cache.CacheLoader<K, @Nullable Expirable<V>> {
   private static final Logger logger = System.getLogger(JCacheLoaderAdapter.class.getName());
 
   private final JCacheStatisticsMXBean statistics;
@@ -90,7 +90,7 @@ public final class JCacheLoaderAdapter<K, V>
         // Subtracts the load time from the get time
         statistics.recordGetTime(start - ticker.read());
       }
-      return new Expirable<>(value, expireTimeMS());
+      return new Expirable<>(value, expireTimeMillis());
     } catch (CacheLoaderException e) {
       throw e;
     } catch (RuntimeException e) {
@@ -107,7 +107,7 @@ public final class JCacheLoaderAdapter<K, V>
       Map<K, Expirable<V>> result = delegate.loadAll(keys).entrySet().stream()
           .filter(entry -> (entry.getKey() != null) && (entry.getValue() != null))
           .collect(toUnmodifiableMap(Map.Entry::getKey,
-              entry -> new Expirable<>(entry.getValue(), expireTimeMS())));
+              entry -> new Expirable<>(entry.getValue(), expireTimeMillis())));
       for (var entry : result.entrySet()) {
         dispatcher.publishCreated(cache, entry.getKey(), entry.getValue().get());
       }
@@ -124,7 +124,7 @@ public final class JCacheLoaderAdapter<K, V>
     }
   }
 
-  private long expireTimeMS() {
+  private long expireTimeMillis() {
     try {
       Duration duration = expiry.getExpiryForCreation();
       if (duration.isZero()) {

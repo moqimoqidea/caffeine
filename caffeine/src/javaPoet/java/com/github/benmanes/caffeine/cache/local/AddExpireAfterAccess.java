@@ -21,27 +21,26 @@ import static com.github.benmanes.caffeine.cache.Specifications.TIMER_WHEEL;
 import javax.lang.model.element.Modifier;
 
 import com.github.benmanes.caffeine.cache.Feature;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.MethodSpec;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.MethodSpec;
 
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
-public final class AddExpireAfterAccess extends LocalCacheRule {
+public final class AddExpireAfterAccess implements LocalCacheRule {
 
   @Override
-  protected boolean applies() {
+  public boolean applies(LocalCacheContext context) {
     return context.generateFeatures.contains(Feature.EXPIRE_ACCESS);
   }
 
   @Override
-  protected void execute() {
-    context.suppressedWarnings.add("NullAway");
-    variableExpiration();
-    fixedExpiration();
+  public void execute(LocalCacheContext context) {
+    variableExpiration(context);
+    fixedExpiration(context);
   }
 
-  private void fixedExpiration() {
+  private static void fixedExpiration(LocalCacheContext context) {
     context.constructor.addStatement(
         "this.expiresAfterAccessNanos = builder.getExpiresAfterAccessNanos()");
     context.cache.addField(FieldSpec.builder(long.class, "expiresAfterAccessNanos")
@@ -63,7 +62,7 @@ public final class AddExpireAfterAccess extends LocalCacheRule {
         .build());
   }
 
-  private void variableExpiration() {
+  private static void variableExpiration(LocalCacheContext context) {
     context.cache.addMethod(MethodSpec.methodBuilder("expiresVariable")
         .addModifiers(context.protectedFinalModifiers())
         .addStatement("return (timerWheel != null)")

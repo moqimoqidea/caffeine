@@ -26,7 +26,6 @@ import java.util.AbstractCollection;
 import java.util.AbstractSet;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -45,10 +44,12 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.LocalAsyncCache.AsyncBulkCompleter.NullMapCompletionException;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.Var;
 
 /**
  * This class provides a skeletal implementation of the {@link AsyncCache} interface to minimize the
@@ -67,7 +68,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
   @Override
   default @Nullable CompletableFuture<V> getIfPresent(K key) {
-    return cache().getIfPresent(key, /* recordStats */ true);
+    return cache().getIfPresent(key, /* recordStats= */ true);
   }
 
   @Override
@@ -80,7 +81,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
   @Override
   default CompletableFuture<V> get(K key, BiFunction<? super K, ? super Executor,
       ? extends CompletableFuture<? extends V>> mappingFunction) {
-    return get(key, mappingFunction, /* recordStats */ true);
+    return get(key, mappingFunction, /* recordStats= */ true);
   }
 
   @SuppressWarnings({"FutureReturnValueIgnored", "NullAway"})
@@ -94,9 +95,9 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       var castedResult = (CompletableFuture<V>) mappingFunction.apply(key, cache().executor());
       result[0] = castedResult;
       return requireNonNull(castedResult);
-    }, recordStats, /* recordLoad */ false);
+    }, recordStats, /* recordLoad= */ false);
     if (result[0] != null) {
-      handleCompletion(key, result[0], startTime, /* recordMiss */ false);
+      handleCompletion(key, result[0], startTime, /* recordMiss= */ false);
     }
     return future;
   }
@@ -119,12 +120,12 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
     int initialCapacity = calculateHashMapCapacity(keys);
     var futures = new LinkedHashMap<K, CompletableFuture<V>>(initialCapacity);
-    var proxies = new HashMap<K, CompletableFuture<V>>(initialCapacity);
+    var proxies = new LinkedHashMap<K, CompletableFuture<V>>(initialCapacity);
     for (K key : keys) {
       if (futures.containsKey(key)) {
         continue;
       }
-      CompletableFuture<V> future = cache().getIfPresent(key, /* recordStats */ false);
+      @Var CompletableFuture<V> future = cache().getIfPresent(key, /* recordStats= */ false);
       if (future == null) {
         var proxy = new CompletableFuture<V>();
         future = cache().putIfAbsent(key, proxy);
@@ -145,10 +146,9 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
     try {
       var loader = mappingFunction.apply(
           Collections.unmodifiableSet(proxies.keySet()), cache().executor());
-      loader.whenComplete(completer);
-      return composeResult(futures);
+      return loader.handle(completer).thenCompose(ignored -> composeResult(futures));
     } catch (Throwable t) {
-      completer.accept(/* result */ null, t);
+      completer.apply(/* result= */ null, t);
       throw t;
     }
   }
@@ -192,15 +192,15 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
     @SuppressWarnings("unchecked")
     var castedFuture = (CompletableFuture<V>) valueFuture;
     cache().put(key, castedFuture);
-    handleCompletion(key, valueFuture, startTime, /* recordMiss */ false);
+    handleCompletion(key, valueFuture, startTime, /* recordMiss= */ false);
   }
 
-  @SuppressWarnings("FutureReturnValueIgnored")
+  @SuppressWarnings({"FutureReturnValueIgnored", "SuspiciousMethodCalls"})
   default void handleCompletion(K key, CompletableFuture<? extends V> valueFuture,
       long startTime, boolean recordMiss) {
     var completed = new AtomicBoolean();
     valueFuture.whenComplete((value, error) -> {
-      if (!completed.compareAndSet(false, true)) {
+      if (!completed.compareAndSet(/* expectedValue= */ false, /* newValue= */ true)) {
         // Ignore multiple invocations due to ForkJoinPool retrying on delays
         return;
       }
@@ -216,9 +216,15 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
         @SuppressWarnings("unchecked")
         var castedFuture = (CompletableFuture<V>) valueFuture;
 
-        // update the weight and expiration timestamps
-        cache().statsCounter().recordLoadSuccess(loadTime);
-        cache().replace(key, castedFuture, castedFuture, /* shouldDiscardRefresh */ false);
+        try {
+          // update the weight and expiration timestamps
+          cache().replace(key, castedFuture, castedFuture, /* shouldDiscardRefresh= */ false);
+          cache().statsCounter().recordLoadSuccess(loadTime);
+        } catch (Throwable t) {
+          logger.log(Level.WARNING, "Exception thrown during asynchronous load", t);
+          cache().statsCounter().recordLoadFailure(loadTime);
+          cache().remove(key, valueFuture);
+        }
       }
       if (recordMiss) {
         cache().statsCounter().recordMisses(1);
@@ -228,8 +234,9 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
   /** A function executed asynchronously after a bulk load completes. */
   final class AsyncBulkCompleter<K, V>
-      implements BiConsumer<Map<? extends K, ? extends V>, Throwable> {
+      implements BiFunction<Map<? extends K, ? extends V>, Throwable, Map<? extends K, ? extends V>> {
     private final LocalCache<K, CompletableFuture<V>> cache;
+    @SuppressWarnings("ImmutableMemberCollection")
     private final Map<K, CompletableFuture<V>> proxies;
     private final long startTime;
 
@@ -241,49 +248,94 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
     }
 
     @Override
-    public void accept(@Nullable Map<? extends K, ? extends V> result, @Nullable Throwable error) {
+    @CanIgnoreReturnValue
+    public @Nullable Map<? extends K, ? extends V> apply(
+        @Nullable Map<? extends K, ? extends V> result, @Nullable Throwable error) {
       long loadTime = cache.statsTicker().read() - startTime;
+      var failure = handleResponse(result, error);
 
+      if (failure == null) {
+        cache.statsCounter().recordLoadSuccess(loadTime);
+        return result;
+      }
+
+      cache.statsCounter().recordLoadFailure(loadTime);
+      if (failure instanceof RuntimeException) {
+        throw (RuntimeException) failure;
+      } else if (failure instanceof Error) {
+        throw (Error) failure;
+      }
+      throw new CompletionException(failure);
+    }
+
+    private @Nullable Throwable handleResponse(
+        @Nullable Map<? extends K, ? extends V> result, @Nullable Throwable error) {
       if (result == null) {
-        if (error == null) {
-          error = new NullMapCompletionException();
-        }
+        var failure = (error == null) ? new NullMapCompletionException() : error;
         for (var entry : proxies.entrySet()) {
           cache.remove(entry.getKey(), entry.getValue());
-          entry.getValue().obtrudeException(error);
+          entry.getValue().obtrudeException(failure);
         }
-        cache.statsCounter().recordLoadFailure(loadTime);
-        if (!(error instanceof CancellationException) && !(error instanceof TimeoutException)) {
-          logger.log(Level.WARNING, "Exception thrown during asynchronous load", error);
+        if (!(failure instanceof CancellationException) && !(failure instanceof TimeoutException)) {
+          logger.log(Level.WARNING, "Exception thrown during asynchronous load", failure);
         }
+        return failure;
       } else {
-        fillProxies(result);
-        addNewEntries(result);
-        cache.statsCounter().recordLoadSuccess(loadTime);
+        var failure = fillProxies(result);
+        return addNewEntries(result, failure);
       }
     }
 
     /** Populates the proxies with the computed result. */
-    private void fillProxies(Map<? extends K, ? extends V> result) {
-      proxies.forEach((key, future) -> {
-        V value = result.get(key);
+    private @Nullable Throwable fillProxies(Map<? extends K, ? extends V> result) {
+      @Var Throwable error = null;
+      for (var entry : proxies.entrySet()) {
+        var key = entry.getKey();
+        var value = result.get(key);
+        var future = entry.getValue();
         future.obtrudeValue(value);
+
         if (value == null) {
           cache.remove(key, future);
         } else {
-          // update the weight and expiration timestamps
-          cache.replace(key, future, future);
+          try {
+            // update the weight and expiration timestamps
+            cache.replace(key, future, future);
+          } catch (Throwable t) {
+            logger.log(Level.WARNING, "Exception thrown during asynchronous load", t);
+            cache.remove(key, future);
+            if (error == null) {
+              error = t;
+            } else {
+              error.addSuppressed(t);
+            }
+          }
         }
-      });
+      }
+      return error;
     }
 
     /** Adds to the cache any extra entries computed that were not requested. */
-    private void addNewEntries(Map<? extends K, ? extends V> result) {
-      result.forEach((key, value) -> {
+    private @Nullable Throwable addNewEntries(
+        Map<? extends K, ? extends V> result, @Nullable Throwable failure) {
+      @Var Throwable error = failure;
+      for (var entry : result.entrySet()) {
+        var key = entry.getKey();
+        var value = result.get(key);
         if (!proxies.containsKey(key)) {
-          cache.put(key, CompletableFuture.completedFuture(value));
+          try {
+            cache.put(key, CompletableFuture.completedFuture(value));
+          } catch (Throwable t) {
+            logger.log(Level.WARNING, "Exception thrown during asynchronous load", t);
+            if (error == null) {
+              error = t;
+            } else {
+              error.addSuppressed(t);
+            }
+          }
         }
-      });
+      }
+      return error;
     }
 
     static final class NullMapCompletionException extends CompletionException {
@@ -320,14 +372,14 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       CompletableFuture<V> prior = asyncCache.cache().putIfAbsent(key, value);
       long startTime = asyncCache.cache().statsTicker().read();
       if (prior == null) {
-        asyncCache.handleCompletion(key, value, startTime, /* recordMiss */ false);
+        asyncCache.handleCompletion(key, value, startTime, /* recordMiss= */ false);
       }
       return prior;
     }
     @Override public CompletableFuture<V> put(K key, CompletableFuture<V> value) {
       CompletableFuture<V> prior = asyncCache.cache().put(key, value);
       long startTime = asyncCache.cache().statsTicker().read();
-      asyncCache.handleCompletion(key, value, startTime, /* recordMiss */ false);
+      asyncCache.handleCompletion(key, value, startTime, /* recordMiss= */ false);
       return prior;
     }
     @SuppressWarnings("FutureReturnValueIgnored")
@@ -338,7 +390,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       CompletableFuture<V> prior = asyncCache.cache().replace(key, value);
       long startTime = asyncCache.cache().statsTicker().read();
       if (prior != null) {
-        asyncCache.handleCompletion(key, value, startTime, /* recordMiss */ false);
+        asyncCache.handleCompletion(key, value, startTime, /* recordMiss= */ false);
       }
       return prior;
     }
@@ -347,7 +399,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       boolean replaced = asyncCache.cache().replace(key, oldValue, newValue);
       long startTime = asyncCache.cache().statsTicker().read();
       if (replaced) {
-        asyncCache.handleCompletion(key, newValue, startTime, /* recordMiss */ false);
+        asyncCache.handleCompletion(key, newValue, startTime, /* recordMiss= */ false);
       }
       return replaced;
     }
@@ -367,7 +419,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       CompletableFuture<V> future = asyncCache.cache().computeIfAbsent(key, k -> {
         result[0] = mappingFunction.apply(k);
         return result[0];
-      }, /* recordStats */ false, /* recordLoad */ false);
+      }, /* recordStats= */ false, /* recordLoad= */ false);
 
       if (result[0] == null) {
         if ((future != null) && asyncCache.cache().isRecordingStats()) {
@@ -378,24 +430,24 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
           });
         }
       } else {
-        asyncCache.handleCompletion(key, result[0], startTime, /* recordMiss */ true);
+        asyncCache.handleCompletion(key, result[0], startTime, /* recordMiss= */ true);
       }
       return future;
     }
-    @Override public CompletableFuture<V> computeIfPresent(K key, BiFunction<? super K,
+    @Override public @Nullable CompletableFuture<V> computeIfPresent(K key, BiFunction<? super K,
         ? super CompletableFuture<V>, ? extends CompletableFuture<V>> remappingFunction) {
       requireNonNull(remappingFunction);
 
       @SuppressWarnings({"rawtypes", "unchecked"})
-      CompletableFuture<V>[] result = new CompletableFuture[1];
+      @Nullable CompletableFuture<V>[] result = new CompletableFuture[1];
       long startTime = asyncCache.cache().statsTicker().read();
       asyncCache.cache().compute(key, (k, oldValue) -> {
         result[0] = (oldValue == null) ? null : remappingFunction.apply(k, oldValue);
         return result[0];
-      }, asyncCache.cache().expiry(), /* recordLoad */ false, /* recordLoadFailure */ false);
+      }, asyncCache.cache().expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ false);
 
       if (result[0] != null) {
-        asyncCache.handleCompletion(key, result[0], startTime, /* recordMiss */ false);
+        asyncCache.handleCompletion(key, result[0], startTime, /* recordMiss= */ false);
       }
       return result[0];
     }
@@ -409,10 +461,10 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       asyncCache.cache().compute(key, (k, oldValue) -> {
         result[0] = remappingFunction.apply(k, oldValue);
         return result[0];
-      }, asyncCache.cache().expiry(), /* recordLoad */ false, /* recordLoadFailure */ false);
+      }, asyncCache.cache().expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ false);
 
       if (result[0] != null) {
-        asyncCache.handleCompletion(key, result[0], startTime, /* recordMiss */ false);
+        asyncCache.handleCompletion(key, result[0], startTime, /* recordMiss= */ false);
       }
       return result[0];
     }
@@ -428,10 +480,10 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       asyncCache.cache().compute(key, (k, oldValue) -> {
         result[0] = (oldValue == null) ? value : remappingFunction.apply(oldValue, value);
         return result[0];
-      }, asyncCache.cache().expiry(), /* recordLoad */ false, /* recordLoadFailure */ false);
+      }, asyncCache.cache().expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ false);
 
       if (result[0] != null) {
-        asyncCache.handleCompletion(key, result[0], startTime, /* recordMiss */ false);
+        asyncCache.handleCompletion(key, result[0], startTime, /* recordMiss= */ false);
       }
       return result[0];
     }
@@ -447,7 +499,8 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
     @Override public Set<Entry<K, CompletableFuture<V>>> entrySet() {
       return asyncCache.cache().entrySet();
     }
-    @Override public boolean equals(Object o) {
+    @SuppressWarnings("EqualsWhichDoesntCheckParameterClass")
+    @Override public boolean equals(@Nullable Object o) {
       return asyncCache.cache().equals(o);
     }
     @Override public int hashCode() {
@@ -482,7 +535,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
     @Override
     public @Nullable V getIfPresent(K key) {
-      CompletableFuture<V> future = asyncCache().cache().getIfPresent(key, /* recordStats */ true);
+      CompletableFuture<V> future = asyncCache().cache().getIfPresent(key, /* recordStats= */ true);
       return Async.getIfReady(future);
     }
 
@@ -522,7 +575,8 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       return resolve(asyncCache().getAll(keys, mappingFunction));
     }
 
-    @SuppressWarnings({"PMD.AvoidThrowingNullPointerException", "PMD.PreserveStackTrace"})
+    @SuppressWarnings({"PMD.AvoidThrowingNullPointerException",
+      "PMD.PreserveStackTrace", "UnusedException"})
     protected static <T> T resolve(CompletableFuture<T> future) {
       try {
         return future.join();
@@ -593,6 +647,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
   final class AsMapView<K, V> implements ConcurrentMap<K, V> {
     final LocalCache<K, CompletableFuture<V>> delegate;
 
+    @Nullable Set<K> keys;
     @Nullable Collection<V> values;
     @Nullable Set<Entry<K, V>> entries;
 
@@ -617,7 +672,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
     @Override
     public boolean containsKey(Object key) {
-      return delegate.containsKey(key);
+      return Async.isReady(delegate.getIfPresentQuietly(key));
     }
 
     @Override
@@ -642,7 +697,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       requireNonNull(value);
 
       // Keep in sync with BoundedVarExpiration.putIfAbsentAsync(key, value, duration, unit)
-      CompletableFuture<V> priorFuture = null;
+      @Var CompletableFuture<V> priorFuture = null;
       for (;;) {
         priorFuture = (priorFuture == null)
             ? delegate.get(key)
@@ -664,7 +719,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
           added[0] = (valueFuture == null)
               || (valueFuture.isDone() && (Async.getIfReady(valueFuture) == null));
           return added[0] ? CompletableFuture.completedFuture(value) : valueFuture;
-        }, delegate.expiry(), /* recordLoad */ false, /* recordLoadFailure */ false);
+        }, delegate.expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ false);
 
         if (added[0]) {
           return null;
@@ -704,10 +759,10 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       }
 
       @SuppressWarnings("unchecked")
-      K castedKey = (K) key;
+      var castedKey = (K) key;
       boolean[] done = { false };
       boolean[] removed = { false };
-      CompletableFuture<V> future = null;
+      @Var CompletableFuture<V> future = null;
       for (;;) {
         future = (future == null)
             ? delegate.get(castedKey)
@@ -729,7 +784,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
           V oldValue = Async.getIfReady(oldValueFuture);
           removed[0] = value.equals(oldValue);
           return (oldValue == null) || removed[0] ? null : oldValueFuture;
-        }, delegate.expiry(), /* recordLoad */ false, /* recordLoadFailure */ true);
+        }, delegate.expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ true);
 
         if (done[0]) {
           return removed[0];
@@ -741,8 +796,8 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
     public @Nullable V replace(K key, V value) {
       requireNonNull(value);
 
-      @SuppressWarnings({"rawtypes", "unchecked"})
-      V[] oldValue = (V[]) new Object[1];
+      @SuppressWarnings({"rawtypes", "unchecked", "Varifier"})
+      @Nullable V[] oldValue = (V[]) new Object[1];
       boolean[] done = { false };
       for (;;) {
         CompletableFuture<V> future = delegate.getIfPresentQuietly(key);
@@ -762,7 +817,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
           done[0] = true;
           oldValue[0] = Async.getIfReady(oldValueFuture);
           return (oldValue[0] == null) ? null : CompletableFuture.completedFuture(value);
-        }, delegate.expiry(), /* recordLoad */ false, /* recordLoadFailure */ false);
+        }, delegate.expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ false);
 
         if (done[0]) {
           return oldValue[0];
@@ -795,7 +850,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
           done[0] = true;
           replaced[0] = oldValue.equals(Async.getIfReady(oldValueFuture));
           return replaced[0] ? CompletableFuture.completedFuture(newValue) : oldValueFuture;
-        }, delegate.expiry(), /* recordLoad */ false, /* recordLoadFailure */ false);
+        }, delegate.expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ false);
 
         if (done[0]) {
           return replaced[0];
@@ -807,7 +862,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
     public @Nullable V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction) {
       requireNonNull(mappingFunction);
 
-      CompletableFuture<V> priorFuture = null;
+      @Var CompletableFuture<V> priorFuture = null;
       for (;;) {
         priorFuture = (priorFuture == null)
             ? delegate.get(key)
@@ -833,13 +888,13 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
             return valueFuture;
           }
 
-          V newValue = delegate.statsAware(mappingFunction, /* recordLoad */ true).apply(key);
+          V newValue = delegate.statsAware(mappingFunction, /* recordLoad= */ true).apply(key);
           if (newValue == null) {
             return null;
           }
           future[0] = CompletableFuture.completedFuture(newValue);
           return future[0];
-        }, delegate.expiry(), /* recordLoad */ false, /* recordLoadFailure */ false);
+        }, delegate.expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ false);
 
         V result = Async.getWhenSuccessful(computed);
         if ((computed == future[0]) || (result != null)) {
@@ -854,7 +909,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       requireNonNull(remappingFunction);
 
       @SuppressWarnings({"rawtypes", "unchecked"})
-      V[] newValue = (V[]) new Object[1];
+      var newValue = (V[]) new Object[1];
       for (;;) {
         Async.getWhenSuccessful(delegate.getIfPresentQuietly(key));
 
@@ -887,7 +942,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       requireNonNull(remappingFunction);
 
       @SuppressWarnings({"rawtypes", "unchecked"})
-      V[] newValue = (V[]) new Object[1];
+      var newValue = (V[]) new Object[1];
       for (;;) {
         Async.getWhenSuccessful(delegate.getIfPresentQuietly(key));
 
@@ -898,10 +953,10 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
           V oldValue = Async.getIfReady(oldValueFuture);
           BiFunction<? super K, ? super V, ? extends V> function = delegate.statsAware(
-              remappingFunction, /* recordLoad */ true, /* recordLoadFailure */ true);
+              remappingFunction, /* recordLoad= */ true, /* recordLoadFailure= */ true);
           newValue[0] = function.apply(key, oldValue);
           return (newValue[0] == null) ? null : CompletableFuture.completedFuture(newValue[0]);
-        }, delegate.expiry(), /* recordLoad */ false, /* recordLoadFailure */ false);
+        }, delegate.expiry(), /* recordLoad= */ false, /* recordLoadFailure= */ false);
 
         if (newValue[0] != null) {
           return newValue[0];
@@ -952,7 +1007,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
     @Override
     public Set<K> keySet() {
-      return delegate.keySet();
+      return (keys == null) ? (keys = new KeySet()) : keys;
     }
 
     @Override
@@ -967,7 +1022,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
     /** See {@link BoundedLocalCache#equals(Object)} for semantics. */
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(@Nullable Object o) {
       if (o == this) {
         return true;
       } else if (!(o instanceof Map)) {
@@ -980,7 +1035,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
         return false;
       }
 
-      int count = 0;
+      @Var int count = 0;
       for (var iterator = new EntryIterator(); iterator.hasNext();) {
         var entry = iterator.next();
         var value = map.get(entry.getKey());
@@ -994,7 +1049,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
     @Override
     public int hashCode() {
-      int hash = 0;
+      @Var int hash = 0;
       for (var iterator = new EntryIterator(); iterator.hasNext();) {
         var entry = iterator.next();
         hash += entry.hashCode();
@@ -1016,6 +1071,71 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
         }
       }
       return result.append('}').toString();
+    }
+
+    private final class KeySet extends AbstractSet<K> {
+
+      @Override
+      public boolean isEmpty() {
+        return AsMapView.this.isEmpty();
+      }
+
+      @Override
+      public int size() {
+        return AsMapView.this.size();
+      }
+
+      @Override
+      public void clear() {
+        AsMapView.this.clear();
+      }
+
+      @Override
+      public boolean contains(Object o) {
+        return AsMapView.this.containsKey(o);
+      }
+
+      @Override
+      public boolean removeAll(Collection<?> collection) {
+        return delegate.keySet().removeAll(collection);
+      }
+
+      @Override
+      public boolean remove(Object o) {
+        return delegate.keySet().remove(o);
+      }
+
+      @Override
+      public boolean removeIf(Predicate<? super K> filter) {
+        return delegate.keySet().removeIf(filter);
+      }
+
+      @Override
+      public boolean retainAll(Collection<?> collection) {
+        return delegate.keySet().retainAll(collection);
+      }
+
+      @Override
+      public Iterator<K> iterator() {
+        return new Iterator<>() {
+          final Iterator<Entry<K, V>> iterator = entrySet().iterator();
+
+          @Override
+          public boolean hasNext() {
+            return iterator.hasNext();
+          }
+
+          @Override
+          public K next() {
+            return iterator.next().getKey();
+          }
+
+          @Override
+          public void remove() {
+            iterator.remove();
+          }
+        };
+      }
     }
 
     private final class Values extends AbstractCollection<V> {
@@ -1043,7 +1163,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       @Override
       public boolean removeAll(Collection<?> collection) {
         requireNonNull(collection);
-        boolean modified = false;
+        @Var boolean modified = false;
         for (var entry : delegate.entrySet()) {
           V value = Async.getIfReady(entry.getValue());
           if ((value != null) && collection.contains(value)
@@ -1080,7 +1200,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       @Override
       public boolean retainAll(Collection<?> collection) {
         requireNonNull(collection);
-        boolean modified = false;
+        @Var boolean modified = false;
         for (var entry : delegate.entrySet()) {
           V value = Async.getIfReady(entry.getValue());
           if ((value != null) && !collection.contains(value)
@@ -1104,7 +1224,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
 
       @Override
       public Iterator<V> iterator() {
-        return new Iterator<V>() {
+        return new Iterator<>() {
           final Iterator<Entry<K, V>> iterator = entrySet().iterator();
 
           @Override
@@ -1147,7 +1267,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
         if (!(o instanceof Entry<?, ?>)) {
           return false;
         }
-        Entry<?, ?> entry = (Entry<?, ?>) o;
+        var entry = (Entry<?, ?>) o;
         var key = entry.getKey();
         var value = entry.getValue();
         if ((key == null) || (value == null)) {
@@ -1160,7 +1280,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       @Override
       public boolean removeAll(Collection<?> collection) {
         requireNonNull(collection);
-        boolean modified = false;
+        @Var boolean modified = false;
         if ((collection instanceof Set<?>) && (collection.size() > size())) {
           for (var entry : this) {
             if (collection.contains(entry)) {
@@ -1180,7 +1300,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
         if (!(obj instanceof Entry<?, ?>)) {
           return false;
         }
-        Entry<?, ?> entry = (Entry<?, ?>) obj;
+        var entry = (Entry<?, ?>) obj;
         var key = entry.getKey();
         return (key != null) && AsMapView.this.remove(key, entry.getValue());
       }
@@ -1188,7 +1308,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       @Override
       public boolean removeIf(Predicate<? super Entry<K, V>> filter) {
         requireNonNull(filter);
-        boolean modified = false;
+        @Var boolean modified = false;
         for (Entry<K, V> entry : this) {
           if (filter.test(entry)) {
             modified |= AsMapView.this.remove(entry.getKey(), entry.getValue());
@@ -1200,7 +1320,7 @@ interface LocalAsyncCache<K, V> extends AsyncCache<K, V> {
       @Override
       public boolean retainAll(Collection<?> collection) {
         requireNonNull(collection);
-        boolean modified = false;
+        @Var boolean modified = false;
         for (var entry : this) {
           if (!collection.contains(entry) && remove(entry)) {
             modified = true;

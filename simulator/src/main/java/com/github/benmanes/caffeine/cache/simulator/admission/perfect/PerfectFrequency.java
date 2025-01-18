@@ -34,9 +34,9 @@ public final class PerfectFrequency implements Frequency {
   private int size;
 
   public PerfectFrequency(Config config) {
-    BasicSettings settings = new BasicSettings(config);
-    sampleSize = Math.toIntExact(10 * settings.maximumSize());
     counts = new Long2IntOpenHashMap();
+    var settings = new BasicSettings(config);
+    sampleSize = Math.toIntExact(10 * settings.maximumSize());
   }
 
   @Override
@@ -55,8 +55,14 @@ public final class PerfectFrequency implements Frequency {
   }
 
   private void reset() {
-    for (Long2IntMap.Entry entry : counts.long2IntEntrySet()) {
-      entry.setValue(entry.getIntValue() / 2);
+    for (var iterator = counts.long2IntEntrySet().iterator(); iterator.hasNext();) {
+      var entry = iterator.next();
+      int newValue = entry.getIntValue() / 2;
+      if (newValue == 0) {
+        iterator.remove();
+      } else {
+        entry.setValue(newValue);
+      }
     }
     size /= 2;
   }

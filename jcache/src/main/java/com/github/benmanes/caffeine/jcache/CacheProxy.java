@@ -59,8 +59,7 @@ import javax.cache.processor.EntryProcessor;
 import javax.cache.processor.EntryProcessorException;
 import javax.cache.processor.EntryProcessorResult;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-import org.checkerframework.checker.nullness.qual.PolyNull;
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.Ticker;
 import com.github.benmanes.caffeine.jcache.configuration.CaffeineConfiguration;
@@ -74,6 +73,7 @@ import com.github.benmanes.caffeine.jcache.management.JmxRegistration;
 import com.github.benmanes.caffeine.jcache.management.JmxRegistration.MBeanType;
 import com.github.benmanes.caffeine.jcache.processor.EntryProcessorEntry;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.Var;
 
 /**
  * An implementation of JSR-107 {@link Cache} backed by a Caffeine cache.
@@ -83,7 +83,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 public class CacheProxy<K, V> implements Cache<K, V> {
   private static final Logger logger = System.getLogger(CacheProxy.class.getName());
 
-  protected final com.github.benmanes.caffeine.cache.Cache<K, Expirable<V>> cache;
+  protected final com.github.benmanes.caffeine.cache.Cache<K, @Nullable Expirable<V>> cache;
   protected final Optional<CacheLoader<K, V>> cacheLoader;
   protected final Set<CompletableFuture<?>> inFlight;
   protected final JCacheStatisticsMXBean statistics;
@@ -94,17 +94,17 @@ public class CacheProxy<K, V> implements Cache<K, V> {
   private final CaffeineConfiguration<K, V> configuration;
   private final CacheManager cacheManager;
   private final CacheWriter<K, V> writer;
-  private final JCacheMXBean cacheMXBean;
+  private final JCacheMXBean cacheMxBean;
   private final ExpiryPolicy expiry;
   private final Copier copier;
   private final String name;
 
   private volatile boolean closed;
 
-  @SuppressWarnings({"PMD.ExcessiveParameterList", "this-escape"})
+  @SuppressWarnings({"PMD.ExcessiveParameterList", "this-escape", "TooManyParameters"})
   public CacheProxy(String name, Executor executor, CacheManager cacheManager,
       CaffeineConfiguration<K, V> configuration,
-      com.github.benmanes.caffeine.cache.Cache<K, Expirable<V>> cache,
+      com.github.benmanes.caffeine.cache.Cache<K, @Nullable Expirable<V>> cache,
       EventDispatcher<K, V> dispatcher, Optional<CacheLoader<K, V>> cacheLoader,
       ExpiryPolicy expiry, Ticker ticker, JCacheStatisticsMXBean statistics) {
     this.writer = requireNonNullElse(configuration.getCacheWriter(), DisabledCacheWriter.get());
@@ -122,7 +122,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     copier = configuration.isStoreByValue()
         ? configuration.getCopierFactory().create()
         : Copier.identity();
-    cacheMXBean = new JCacheMXBean(this);
+    cacheMxBean = new JCacheMXBean(this);
     inFlight = ConcurrentHashMap.newKeySet();
   }
 
@@ -157,7 +157,8 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       return null;
     }
 
-    long start, millis;
+    long start;
+    long millis;
     boolean statsEnabled = statistics.isEnabled();
     if (!expirable.isEternal()) {
       start = ticker.read();
@@ -198,7 +199,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     boolean statsEnabled = statistics.isEnabled();
     long now = statsEnabled ? ticker.read() : 0L;
 
-    Map<K, Expirable<V>> result = getAndFilterExpiredEntries(keys, true);
+    Map<K, Expirable<V>> result = getAndFilterExpiredEntries(keys, /* updateAccessTime= */ true);
 
     if (statsEnabled) {
       statistics.recordGetTime(ticker.read() - now);
@@ -212,6 +213,8 @@ public class CacheProxy<K, V> implements Cache<K, V> {
    */
   protected Map<K, Expirable<V>> getAndFilterExpiredEntries(
       Set<? extends K> keys, boolean updateAccessTime) {
+    // NullAway does not yet understand the @NonNull annotation in the return type of getAllPresent.
+    @SuppressWarnings("NullAway")
     var result = new HashMap<K, Expirable<V>>(cache.getAllPresent(keys));
 
     int[] expired = { 0 };
@@ -283,7 +286,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
   private void loadAllAndReplaceExisting(Set<? extends K> keys) {
     Map<K, V> loaded = cacheLoader.orElseThrow().loadAll(keys);
     for (var entry : loaded.entrySet()) {
-      putNoCopyOrAwait(entry.getKey(), entry.getValue(), /* publishToWriter */ false);
+      putNoCopyOrAwait(entry.getKey(), entry.getValue(), /* publishToWriter= */ false);
     }
   }
 
@@ -295,7 +298,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     Map<K, V> result = cacheLoader.orElseThrow().loadAll(keysToLoad);
     for (var entry : result.entrySet()) {
       if ((entry.getKey() != null) && (entry.getValue() != null)) {
-        putIfAbsentNoAwait(entry.getKey(), entry.getValue(), /* publishToWriter */ false);
+        putIfAbsentNoAwait(entry.getKey(), entry.getValue(), /* publishToWriter= */ false);
       }
     }
   }
@@ -306,7 +309,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     boolean statsEnabled = statistics.isEnabled();
     long start = statsEnabled ? ticker.read() : 0L;
 
-    var result = putNoCopyOrAwait(key, value, /* publishToWriter */ true);
+    var result = putNoCopyOrAwait(key, value, /* publishToWriter= */ true);
     dispatcher.awaitSynchronous();
 
     if (statsEnabled) {
@@ -323,7 +326,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     boolean statsEnabled = statistics.isEnabled();
     long start = statsEnabled ? ticker.read() : 0L;
 
-    var result = putNoCopyOrAwait(key, value, true);
+    var result = putNoCopyOrAwait(key, value, /* publishToWriter= */ true);
     dispatcher.awaitSynchronous();
 
     if (statsEnabled) {
@@ -356,7 +359,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     requireNonNull(value);
 
     var result = new PutResult<V>();
-    cache.asMap().compute(copyOf(key), (k, expirable) -> {
+    cache.asMap().compute(copyOf(key), (K k, @Var Expirable<V> expirable) -> {
       V newValue = copyOf(value);
       if (publishToWriter) {
         publishToCacheWriter(writer::write, () -> new EntryProxy<>(key, value));
@@ -367,11 +370,11 @@ public class CacheProxy<K, V> implements Cache<K, V> {
         statistics.recordEvictions(1L);
         expirable = null;
       }
-      long expireTimeMS = getWriteExpireTimeMS((expirable == null));
-      if ((expirable != null) && (expireTimeMS == Long.MIN_VALUE)) {
-        expireTimeMS = expirable.getExpireTimeMS();
+      @Var long expireTimeMillis = getWriteexpireTimeMillis((expirable == null));
+      if ((expirable != null) && (expireTimeMillis == Long.MIN_VALUE)) {
+        expireTimeMillis = expirable.getExpireTimeMillis();
       }
-      if (expireTimeMS == 0) {
+      if (expireTimeMillis == 0) {
         // The TCK asserts that expired entry is not counted in the puts stats, despite the javadoc
         // saying otherwise. See CacheMBStatisticsBeanTest.testExpiryOnCreation()
         result.written = false;
@@ -389,7 +392,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
         dispatcher.publishUpdated(this, key, expirable.get(), newValue);
       }
       result.written = true;
-      return new Expirable<>(newValue, expireTimeMS);
+      return new Expirable<>(newValue, expireTimeMillis);
     });
     return result;
   }
@@ -402,8 +405,8 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       requireNonNull(entry.getValue());
     }
 
-    CacheWriterException error = null;
-    Set<? extends K> failedKeys = Set.of();
+    @Var CacheWriterException error = null;
+    @Var Set<? extends K> failedKeys = Set.of();
     boolean statsEnabled = statistics.isEnabled();
     long start = statsEnabled ? ticker.read() : 0L;
     if (configuration.isWriteThrough() && !map.isEmpty()) {
@@ -422,11 +425,11 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       }
     }
 
-    int puts = 0;
+    @Var int puts = 0;
     for (var entry : map.entrySet()) {
       if (!failedKeys.contains(entry.getKey())) {
         var result = putNoCopyOrAwait(entry.getKey(),
-            entry.getValue(), /* publishToWriter */ false);
+            entry.getValue(), /* publishToWriter= */ false);
         if (result.written) {
           puts++;
         }
@@ -451,7 +454,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     boolean statsEnabled = statistics.isEnabled();
     long start = statsEnabled ? ticker.read() : 0L;
 
-    boolean added = putIfAbsentNoAwait(key, value, /* publishToWriter */ true);
+    boolean added = putIfAbsentNoAwait(key, value, /* publishToWriter= */ true);
     dispatcher.awaitSynchronous();
 
     if (statsEnabled) {
@@ -478,7 +481,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
   @CanIgnoreReturnValue
   private boolean putIfAbsentNoAwait(K key, V value, boolean publishToWriter) {
     boolean[] absent = { false };
-    cache.asMap().compute(copyOf(key), (k, expirable) -> {
+    cache.asMap().compute(copyOf(key), (K k, @Var Expirable<V> expirable) -> {
       if ((expirable != null) && !expirable.isEternal()
           && expirable.hasExpired(currentTimeMillis())) {
         dispatcher.publishExpired(this, key, expirable.get());
@@ -494,15 +497,15 @@ public class CacheProxy<K, V> implements Cache<K, V> {
 
       absent[0] = true;
       V copy = copyOf(value);
-      long expireTimeMS = getWriteExpireTimeMS(/* created */ true);
-      if (expireTimeMS == 0) {
+      long expireTimeMillis = getWriteexpireTimeMillis(/* created= */ true);
+      if (expireTimeMillis == 0) {
         // The TCK asserts that a create is not published in
         // CacheExpiryTest.expire_whenCreated_CreatedExpiryPolicy()
         dispatcher.publishExpired(this, key, copy);
         return null;
       } else {
         dispatcher.publishCreated(this, key, copy);
-        return new Expirable<>(copy, expireTimeMS);
+        return new Expirable<>(copy, expireTimeMillis);
       }
     });
     return absent[0];
@@ -539,7 +542,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
    */
   private V removeNoCopyOrAwait(K key) {
     @SuppressWarnings("unchecked")
-    V[] removed = (V[]) new Object[1];
+    var removed = (V[]) new Object[1];
     cache.asMap().computeIfPresent(key, (k, expirable) -> {
       if (!expirable.isEternal() && expirable.hasExpired(currentTimeMillis())) {
         dispatcher.publishExpired(this, key, expirable.get());
@@ -649,11 +652,11 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       if (oldValue.equals(expirable.get())) {
         publishToCacheWriter(writer::write, () -> new EntryProxy<>(key, expirable.get()));
         dispatcher.publishUpdated(this, key, expirable.get(), copyOf(newValue));
-        long expireTimeMS = getWriteExpireTimeMS(/* created */ false);
-        if (expireTimeMS == Long.MIN_VALUE) {
-          expireTimeMS = expirable.getExpireTimeMS();
+        @Var long expireTimeMillis = getWriteexpireTimeMillis(/* created= */ false);
+        if (expireTimeMillis == Long.MIN_VALUE) {
+          expireTimeMillis = expirable.getExpireTimeMillis();
         }
-        result = new Expirable<>(newValue, expireTimeMS);
+        result = new Expirable<>(newValue, expireTimeMillis);
         replaced[0] = true;
       } else {
         result = expirable;
@@ -734,7 +737,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     requireNonNull(value);
     V copy = copyOf(value);
     @SuppressWarnings("unchecked")
-    V[] replaced = (V[]) new Object[1];
+    var replaced = (V[]) new Object[1];
     cache.asMap().computeIfPresent(key, (k, expirable) -> {
       if (!expirable.isEternal() && expirable.hasExpired(currentTimeMillis())) {
         dispatcher.publishExpired(this, key, expirable.get());
@@ -743,13 +746,13 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       }
 
       publishToCacheWriter(writer::write, () -> new EntryProxy<>(key, value));
-      long expireTimeMS = getWriteExpireTimeMS(/* created */ false);
-      if (expireTimeMS == Long.MIN_VALUE) {
-        expireTimeMS = expirable.getExpireTimeMS();
+      @Var long expireTimeMillis = getWriteexpireTimeMillis(/* created= */ false);
+      if (expireTimeMillis == Long.MIN_VALUE) {
+        expireTimeMillis = expirable.getExpireTimeMillis();
       }
       dispatcher.publishUpdated(this, key, expirable.get(), copy);
       replaced[0] = expirable.get();
-      return new Expirable<>(copy, expireTimeMS);
+      return new Expirable<>(copy, expireTimeMillis);
     });
     return replaced[0];
   }
@@ -759,8 +762,8 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     requireNotClosed();
     keys.forEach(Objects::requireNonNull);
 
-    CacheWriterException error = null;
-    Set<? extends K> failedKeys = Set.of();
+    @Var CacheWriterException error = null;
+    @Var Set<? extends K> failedKeys = Set.of();
     boolean statsEnabled = statistics.isEnabled();
     long start = statsEnabled ? ticker.read() : 0L;
     if (configuration.isWriteThrough() && !keys.isEmpty()) {
@@ -776,7 +779,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       }
     }
 
-    int removed = 0;
+    @Var int removed = 0;
     for (var key : keys) {
       if (!failedKeys.contains(key) && (removeNoCopyOrAwait(key) != null)) {
         removed++;
@@ -816,7 +819,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
   }
 
   @Override
-  public @Nullable <T> T invoke(K key,
+  public <T> @Nullable T invoke(K key,
       EntryProcessor<K, V, T> entryProcessor, Object... arguments) {
     requireNonNull(entryProcessor);
     requireNonNull(arguments);
@@ -825,7 +828,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     Object[] result = new Object[1];
     BiFunction<K, Expirable<V>, Expirable<V>> remappingFunction = (k, expirable) -> {
       V value;
-      long millis = 0L;
+      @Var long millis = 0L;
       if ((expirable == null)
           || (!expirable.isEternal() && expirable.hasExpired(millis = currentTimeMillis()))) {
         statistics.recordMisses(1L);
@@ -834,7 +837,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
         value = copyValue(expirable);
         statistics.recordHits(1L);
       }
-      EntryProcessorEntry<K, V> entry = new EntryProcessorEntry<>(key, value,
+      var entry = new EntryProcessorEntry<>(key, value,
           configuration.isReadThrough() ? cacheLoader : Optional.empty());
       try {
         result[0] = entryProcessor.process(entry, arguments);
@@ -848,21 +851,20 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     try {
       cache.asMap().compute(copyOf(key), remappingFunction);
       dispatcher.awaitSynchronous();
-    } catch (Throwable thr) {
+    } catch (Throwable t) {
       dispatcher.ignoreSynchronous();
-      throw thr;
+      throw t;
     }
 
     @SuppressWarnings("unchecked")
-    T castedResult = (T) result[0];
+    var castedResult = (T) result[0];
     return castedResult;
   }
 
   /** Returns the updated expirable value after performing the post-processing actions. */
-  @SuppressWarnings({"fallthrough", "NullAway",
-    "PMD.MissingBreakInSwitch", "PMD.SwitchStmtsShouldHaveDefault"})
+  @SuppressWarnings({"fallthrough", "NullAway", "PMD.MissingBreakInSwitch"})
   private @Nullable Expirable<V> postProcess(@Nullable Expirable<V> expirable,
-      EntryProcessorEntry<K, V> entry, long currentTimeMS) {
+      EntryProcessorEntry<K, V> entry, @Var long currentTimeMillis) {
     switch (entry.getAction()) {
       case NONE:
         if (expirable == null) {
@@ -870,10 +872,10 @@ public class CacheProxy<K, V> implements Cache<K, V> {
         } else if (expirable.isEternal()) {
           return expirable;
         }
-        if (currentTimeMS == 0) {
-          currentTimeMS = currentTimeMillis();
+        if (currentTimeMillis == 0) {
+          currentTimeMillis = currentTimeMillis();
         }
-        if (expirable.hasExpired(currentTimeMS)) {
+        if (expirable.hasExpired(currentTimeMillis)) {
           dispatcher.publishExpired(this, entry.getKey(), expirable.get());
           statistics.recordEvictions(1);
           return null;
@@ -889,17 +891,17 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       case LOADED:
         statistics.recordPuts(1L);
         dispatcher.publishCreated(this, entry.getKey(), entry.getValue());
-        return new Expirable<>(entry.getValue(), getWriteExpireTimeMS(/* created */ true));
+        return new Expirable<>(entry.getValue(), getWriteexpireTimeMillis(/* created= */ true));
       case UPDATED: {
         statistics.recordPuts(1L);
         publishToCacheWriter(writer::write, () -> entry);
         requireNonNull(expirable, "Expected a previous value but was null");
         dispatcher.publishUpdated(this, entry.getKey(), expirable.get(), entry.getValue());
-        long expireTimeMS = getWriteExpireTimeMS(/* created */ false);
-        if (expireTimeMS == Long.MIN_VALUE) {
-          expireTimeMS = expirable.getExpireTimeMS();
+        @Var long expireTimeMillis = getWriteexpireTimeMillis(/* created= */ false);
+        if (expireTimeMillis == Long.MIN_VALUE) {
+          expireTimeMillis = expirable.getExpireTimeMillis();
         }
-        return new Expirable<>(entry.getValue(), expireTimeMS);
+        return new Expirable<>(entry.getValue(), expireTimeMillis);
       }
       case DELETED:
         statistics.recordRemovals(1L);
@@ -915,7 +917,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
   @Override
   public <T> Map<K, EntryProcessorResult<T>> invokeAll(Set<? extends K> keys,
       EntryProcessor<K, V, T> entryProcessor, Object... arguments) {
-    Map<K, EntryProcessorResult<T>> results = new HashMap<>(keys.size(), 1.0f);
+    var results = new HashMap<K, EntryProcessorResult<T>>(keys.size(), 1.0f);
     for (K key : keys) {
       try {
         T result = invoke(key, entryProcessor, arguments);
@@ -956,7 +958,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
         cacheManager.destroyCache(name);
         closed = true;
 
-        var thrown = shutdownExecutor();
+        @Var var thrown = shutdownExecutor();
         thrown = tryClose(expiry, thrown);
         thrown = tryClose(writer, thrown);
         thrown = tryClose(executor, thrown);
@@ -979,7 +981,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       es.shutdown();
     }
 
-    Throwable thrown = null;
+    @Var Throwable thrown = null;
     try {
       CompletableFuture
           .allOf(inFlight.toArray(CompletableFuture[]::new))
@@ -1016,10 +1018,9 @@ public class CacheProxy<K, V> implements Cache<K, V> {
 
   @Override
   public <T> T unwrap(Class<T> clazz) {
-    if (clazz.isAssignableFrom(cache.getClass())) {
+    if (clazz.isInstance(cache)) {
       return clazz.cast(cache);
-    }
-    if (clazz.isAssignableFrom(getClass())) {
+    } else if (clazz.isInstance(this)) {
       return clazz.cast(this);
     }
     throw new IllegalArgumentException("Unwrapping to " + clazz
@@ -1058,9 +1059,9 @@ public class CacheProxy<K, V> implements Cache<K, V> {
 
     synchronized (configuration) {
       if (enabled) {
-        JmxRegistration.registerMXBean(this, cacheMXBean, MBeanType.Configuration);
+        JmxRegistration.registerMxBean(this, cacheMxBean, MBeanType.CONFIGURATION);
       } else {
-        JmxRegistration.unregisterMXBean(this, MBeanType.Configuration);
+        JmxRegistration.unregisterMxBean(this, MBeanType.CONFIGURATION);
       }
       configuration.setManagementEnabled(enabled);
     }
@@ -1072,9 +1073,9 @@ public class CacheProxy<K, V> implements Cache<K, V> {
 
     synchronized (configuration) {
       if (enabled) {
-        JmxRegistration.registerMXBean(this, statistics, MBeanType.Statistics);
+        JmxRegistration.registerMxBean(this, statistics, MBeanType.STATISTICS);
       } else {
-        JmxRegistration.unregisterMXBean(this, MBeanType.Statistics);
+        JmxRegistration.unregisterMxBean(this, MBeanType.STATISTICS);
       }
       statistics.enable(enabled);
       configuration.setStatisticsEnabled(enabled);
@@ -1110,7 +1111,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
    * @return a copy of the object if storing by value or the same instance if by reference
    */
   @SuppressWarnings("NullAway")
-  protected final <T> @PolyNull T copyOf(@PolyNull @Nullable T object) {
+  protected final <T> T copyOf(@Nullable T object) {
     if (object == null) {
       return null;
     }
@@ -1125,7 +1126,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
    * @return a copy of the value if storing by value or the same instance if by reference
    */
   @SuppressWarnings("NullAway")
-  protected final @PolyNull V copyValue(@PolyNull Expirable<V> expirable) {
+  protected final V copyValue(@Nullable Expirable<V> expirable) {
     if (expirable == null) {
       return null;
     }
@@ -1162,23 +1163,24 @@ public class CacheProxy<K, V> implements Cache<K, V> {
    *
    * @param key the entry's key
    * @param expirable the entry that was operated on
-   * @param currentTimeMS the current time, or 0 if not read yet
+   * @param currentTimeMillis the current time, or 0 if not read yet
    */
-  protected final void setAccessExpireTime(K key, Expirable<?> expirable, long currentTimeMS) {
+  protected final void setAccessExpireTime(K key,
+      Expirable<?> expirable, @Var long currentTimeMillis) {
     try {
       Duration duration = expiry.getExpiryForAccess();
       if (duration == null) {
         return;
       } else if (duration.isZero()) {
-        expirable.setExpireTimeMS(0L);
+        expirable.setExpireTimeMillis(0L);
       } else if (duration.isEternal()) {
-        expirable.setExpireTimeMS(Long.MAX_VALUE);
+        expirable.setExpireTimeMillis(Long.MAX_VALUE);
       } else {
-        if (currentTimeMS == 0L) {
-          currentTimeMS = currentTimeMillis();
+        if (currentTimeMillis == 0L) {
+          currentTimeMillis = currentTimeMillis();
         }
-        long expireTimeMS = duration.getAdjustedTime(currentTimeMS);
-        expirable.setExpireTimeMS(expireTimeMS);
+        long expireTimeMillis = duration.getAdjustedTime(currentTimeMillis);
+        expirable.setExpireTimeMillis(expireTimeMillis);
       }
       cache.policy().expireVariably().ifPresent(policy -> {
         policy.setExpiresAfter(key, duration.getDurationAmount(), duration.getTimeUnit());
@@ -1195,7 +1197,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
    * @return the time when the entry will expire, zero if it should expire immediately,
    *         Long.MIN_VALUE if it should not be changed, or Long.MAX_VALUE if eternal
    */
-  protected final long getWriteExpireTimeMS(boolean created) {
+  protected final long getWriteexpireTimeMillis(boolean created) {
     try {
       Duration duration = created ? expiry.getExpiryForCreation() : expiry.getExpiryForUpdate();
       if (duration == null) {
@@ -1214,6 +1216,8 @@ public class CacheProxy<K, V> implements Cache<K, V> {
 
   /** An iterator to safely expose the cache entries. */
   final class EntryIterator implements Iterator<Cache.Entry<K, V>> {
+    // NullAway does not yet understand the @NonNull annotation in the return type of asMap.
+    @SuppressWarnings("NullAway")
     final Iterator<Map.Entry<K, Expirable<V>>> delegate = cache.asMap().entrySet().iterator();
     Map.@Nullable Entry<K, Expirable<V>> current;
     Map.@Nullable Entry<K, Expirable<V>> cursor;
@@ -1239,7 +1243,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
       current = cursor;
       cursor = null;
       @SuppressWarnings("NullAway")
-      var entry = new EntryProxy<K, V>(copyOf(current.getKey()), copyValue(current.getValue()));
+      var entry = new EntryProxy<>(copyOf(current.getKey()), copyValue(current.getValue()));
       return entry;
     }
 
@@ -1253,7 +1257,7 @@ public class CacheProxy<K, V> implements Cache<K, V> {
     }
   }
 
-  private static final class PutResult<V> {
+  protected static final class PutResult<V> {
     @Nullable V oldValue;
     boolean written;
   }

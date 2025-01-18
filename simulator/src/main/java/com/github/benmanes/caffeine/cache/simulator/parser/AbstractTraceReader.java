@@ -24,7 +24,7 @@ import java.io.InputStream;
 import java.io.SequenceInputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.UnaryOperator;
@@ -34,12 +34,13 @@ import org.apache.commons.compress.archivers.ArchiveStreamFactory;
 import org.apache.commons.compress.compressors.CompressorException;
 import org.apache.commons.compress.compressors.CompressorStreamFactory;
 import org.apache.commons.io.input.CloseShieldInputStream;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 import org.tukaani.xz.XZInputStream;
 
 import com.google.common.base.Throwables;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Iterators;
+import com.google.errorprone.annotations.Var;
 
 /**
  * A skeletal implementation that reads the trace files into a data stream.
@@ -66,11 +67,11 @@ public abstract class AbstractTraceReader implements TraceReader {
 
   @SuppressWarnings("PMD.CloseResource")
   protected BufferedInputStream readInput(InputStream input) {
-    BufferedInputStream buffered = null;
+    @Var BufferedInputStream buffered = null;
     try {
       buffered = new BufferedInputStream(input, BUFFER_SIZE);
-      List<UnaryOperator<InputStream>> extractors = List.of(
-          this::tryXZ, this::tryCompressed, this::tryArchived);
+      var extractors = List.<UnaryOperator<InputStream>>of(
+          AbstractTraceReader::tryXz, AbstractTraceReader::tryCompressed, this::tryArchived);
       for (var extractor : extractors) {
         buffered.mark(100);
         InputStream next = extractor.apply(buffered);
@@ -92,12 +93,12 @@ public abstract class AbstractTraceReader implements TraceReader {
         t.addSuppressed(e);
       }
       Throwables.throwIfUnchecked(t);
-      throw new RuntimeException(t);
+      throw new IllegalStateException(t);
     }
   }
 
   /** Returns a uncompressed stream if XZ encoded, else {@code null}. */
-  private @Nullable InputStream tryXZ(InputStream input) {
+  private static @Nullable InputStream tryXz(InputStream input) {
     try {
       return new XZInputStream(input);
     } catch (IOException e) {
@@ -106,7 +107,7 @@ public abstract class AbstractTraceReader implements TraceReader {
   }
 
   /** Returns a uncompressed stream, else {@code null}. */
-  private @Nullable InputStream tryCompressed(InputStream input) {
+  private static @Nullable InputStream tryCompressed(InputStream input) {
     try {
       return new CompressorStreamFactory().createCompressorInputStream(input);
     } catch (CompressorException e) {
@@ -119,7 +120,7 @@ public abstract class AbstractTraceReader implements TraceReader {
     try {
       var archive = new ArchiveStreamFactory().createArchiveInputStream(input);
       var entries = new AbstractIterator<InputStream>() {
-        @Override protected InputStream computeNext() {
+        @Override protected @Nullable InputStream computeNext() {
           try {
             return (archive.getNextEntry() == null)
                 ? endOfData()
@@ -137,7 +138,7 @@ public abstract class AbstractTraceReader implements TraceReader {
 
   /** Returns the input stream for the raw file. */
   private InputStream openFile() throws IOException {
-    var file = Paths.get(filePath);
+    var file = Path.of(filePath);
     if (Files.exists(file)) {
       return Files.newInputStream(file);
     }

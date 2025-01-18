@@ -1,5 +1,5 @@
 plugins {
-  id("root-caffeine-conventions")
+  id("root.caffeine")
 }
 
 allprojects {
@@ -7,7 +7,7 @@ allprojects {
   group = "com.github.ben-manes.caffeine"
   version(
     major = 3, // incompatible API changes
-    minor = 1, // backwards-compatible additions
-    patch = 9, // backwards-compatible bug fixes
+    minor = 2, // backwards-compatible additions
+    patch = 1, // backwards-compatible bug fixes
     releaseBuild = rootProject.hasProperty("release"))
 }

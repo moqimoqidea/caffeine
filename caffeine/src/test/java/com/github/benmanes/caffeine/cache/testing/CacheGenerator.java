@@ -38,6 +38,7 @@ import com.github.benmanes.caffeine.cache.testing.CacheSpec.Loader;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Maximum;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Population;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.ReferenceType;
+import com.github.benmanes.caffeine.cache.testing.CacheSpec.StartTime;
 import com.github.benmanes.caffeine.cache.testing.CacheSpec.Stats;
 import com.github.benmanes.caffeine.testing.Int;
 import com.google.common.collect.ImmutableList;
@@ -61,10 +62,10 @@ public final class CacheGenerator {
 
   public CacheGenerator(CacheSpec cacheSpec) {
     this(cacheSpec, Options.fromSystemProperties(),
-        /* isLoadingOnly */ false, /* isAsyncOnly */ false, /* isGuavaCompatible */ true);
+        /* isLoadingOnly= */ false, /* isAsyncOnly= */ false, /* isGuavaCompatible= */ true);
   }
 
-  public CacheGenerator(CacheSpec cacheSpec, Options options,
+  CacheGenerator(CacheSpec cacheSpec, Options options,
       boolean isLoadingOnly, boolean isAsyncOnly, boolean isGuavaCompatible) {
     this.isGuavaCompatible = isGuavaCompatible;
     this.isLoadingOnly = isLoadingOnly;
@@ -89,64 +90,66 @@ public final class CacheGenerator {
   @SuppressWarnings("IdentityConversion")
   private Set<List<Object>> combinations() {
     var asyncLoader = ImmutableSet.of(true, false);
-    var loaders = ImmutableSet.copyOf(cacheSpec.loader());
     var keys = filterTypes(options.keys(), cacheSpec.keys());
     var values = filterTypes(options.values(), cacheSpec.values());
     var statistics = filterTypes(options.stats(), cacheSpec.stats());
+    var expiry = Sets.immutableEnumSet(Arrays.asList(cacheSpec.expiry()));
     var computations = filterTypes(options.compute(), cacheSpec.compute());
+    var loaders = Sets.immutableEnumSet(Arrays.asList(cacheSpec.loader()));
+    var weigher = Sets.immutableEnumSet(Arrays.asList(cacheSpec.weigher()));
+    var executor = Sets.immutableEnumSet(Arrays.asList(cacheSpec.executor()));
+    var scheduler = Sets.immutableEnumSet(Arrays.asList(cacheSpec.scheduler()));
+    var startTime = Sets.immutableEnumSet(Arrays.asList(cacheSpec.startTime()));
+    var population = Sets.immutableEnumSet(Arrays.asList(cacheSpec.population()));
+    var maximumSize = Sets.immutableEnumSet(Arrays.asList(cacheSpec.maximumSize()));
     var implementations = filterTypes(options.implementation(), cacheSpec.implementation());
+    var initialCapacity = Sets.immutableEnumSet(Arrays.asList(cacheSpec.initialCapacity()));
+    var removalListener = Sets.immutableEnumSet(Arrays.asList(cacheSpec.removalListener()));
+    var evictionListener = Sets.immutableEnumSet(Arrays.asList(cacheSpec.evictionListener()));
+    var expireAfterWrite = Sets.immutableEnumSet(Arrays.asList(cacheSpec.expireAfterWrite()));
+    var expireAfterAccess = Sets.immutableEnumSet(Arrays.asList(cacheSpec.expireAfterAccess()));
+    var refreshAfterWrite = Sets.immutableEnumSet(Arrays.asList(cacheSpec.refreshAfterWrite()));
 
     if (isAsyncOnly) {
       values = values.contains(ReferenceType.STRONG)
-          ? ImmutableSet.of(ReferenceType.STRONG)
+          ? Sets.immutableEnumSet(ReferenceType.STRONG)
           : ImmutableSet.of();
-      computations = Sets.intersection(computations, Set.of(Compute.ASYNC));
+      computations = Sets.intersection(computations,
+          Sets.immutableEnumSet(Compute.ASYNC)).immutableCopy();
     }
-    if (!isGuavaCompatible || isAsyncOnly || computations.equals(ImmutableSet.of(Compute.ASYNC))) {
-      implementations = Sets.difference(implementations, Set.of(Implementation.Guava));
+    if (!isGuavaCompatible || isAsyncOnly
+        || computations.equals(Sets.immutableEnumSet(Compute.ASYNC))) {
+      implementations = Sets.difference(implementations,
+          Sets.immutableEnumSet(Implementation.Guava)).immutableCopy();
     }
-    if (computations.equals(ImmutableSet.of(Compute.SYNC))) {
+    if (computations.equals(Sets.immutableEnumSet(Compute.SYNC))) {
       asyncLoader = ImmutableSet.of(false);
     }
 
     if (isLoadingOnly) {
-      loaders = Sets.difference(loaders, Set.of(Loader.DISABLED)).immutableCopy();
+      loaders = Sets.difference(loaders, Sets.immutableEnumSet(Loader.DISABLED)).immutableCopy();
     }
 
-    if (computations.isEmpty() || implementations.isEmpty()
-        || keys.isEmpty() || values.isEmpty()) {
+    if (computations.isEmpty() || implementations.isEmpty() || keys.isEmpty() || values.isEmpty()) {
       return ImmutableSet.of();
     }
-    return Sets.cartesianProduct(
-        ImmutableSet.copyOf(cacheSpec.initialCapacity()),
-        ImmutableSet.copyOf(statistics),
-        ImmutableSet.copyOf(cacheSpec.weigher()),
-        ImmutableSet.copyOf(cacheSpec.maximumSize()),
-        ImmutableSet.copyOf(cacheSpec.expiry()),
-        ImmutableSet.copyOf(cacheSpec.expireAfterAccess()),
-        ImmutableSet.copyOf(cacheSpec.expireAfterWrite()),
-        ImmutableSet.copyOf(cacheSpec.refreshAfterWrite()),
-        ImmutableSet.copyOf(keys),
-        ImmutableSet.copyOf(values),
-        ImmutableSet.copyOf(cacheSpec.executor()),
-        ImmutableSet.copyOf(cacheSpec.scheduler()),
-        ImmutableSet.copyOf(cacheSpec.removalListener()),
-        ImmutableSet.copyOf(cacheSpec.evictionListener()),
-        ImmutableSet.copyOf(cacheSpec.population()),
-        ImmutableSet.copyOf(asyncLoader),
-        ImmutableSet.copyOf(computations),
-        ImmutableSet.copyOf(loaders),
-        ImmutableSet.copyOf(implementations));
+
+    return Sets.cartesianProduct(initialCapacity, statistics, weigher, maximumSize, expiry,
+        expireAfterAccess, expireAfterWrite, refreshAfterWrite, keys, values, executor, scheduler,
+        removalListener, evictionListener, population, asyncLoader, computations, loaders,
+        implementations, startTime);
   }
 
   /** Returns the set of options filtered if a specific type is specified. */
-  private static <T> Set<T> filterTypes(Optional<T> type, T[] options) {
+  private static <T extends Enum<T>> ImmutableSet<T> filterTypes(Optional<T> type, T[] options) {
     return type.isPresent()
-        ? Sets.intersection(Set.of(options), Set.of(type.orElseThrow()))
-        : ImmutableSet.copyOf(options);
+        ? Sets.intersection(Sets.immutableEnumSet(Arrays.asList(options)),
+            Set.of(type.orElseThrow())).immutableCopy()
+        : Sets.immutableEnumSet(Arrays.asList(options));
   }
 
   /** Returns a new cache context based on the combination. */
+  @SuppressWarnings("PMD.UnusedAssignment")
   private CacheContext newCacheContext(List<Object> combination) {
     int index = 0;
     return new CacheContext(
@@ -169,7 +172,8 @@ public final class CacheGenerator {
         (Compute) combination.get(index++),
         (Loader) combination.get(index++),
         (Implementation) combination.get(index++),
-        cacheSpec);
+        (StartTime) combination.get(index),
+        cacheSpec.expiryTime());
   }
 
   /** Returns if the context is a viable configuration. */
@@ -216,8 +220,8 @@ public final class CacheGenerator {
       return;
     }
 
-    int maximum = (int) Math.min(context.maximumSize(), context.population.size());
-    int first = BASE + (int) Math.min(0, context.population.size());
+    int maximum = Math.toIntExact(Math.min(context.maximumSize(), context.population.size()));
+    int first = Math.toIntExact(BASE + Math.min(0, context.population.size()));
     int last = BASE + maximum - 1;
     int middle = Math.max(first, BASE + ((last - first) / 2));
 
@@ -250,7 +254,7 @@ public final class CacheGenerator {
 
   /** Returns a cache of integers and their negation. */
   private static ImmutableList<Map.Entry<Int, Int>> makeInts() {
-    int size = Arrays.stream(CacheSpec.Population.values())
+    int size = Arrays.stream(Population.values())
         .mapToInt(population -> Math.toIntExact(population.size()))
         .max().getAsInt();
     var builder = new ImmutableList.Builder<Map.Entry<Int, Int>>();

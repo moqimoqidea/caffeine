@@ -18,6 +18,10 @@ package com.github.benmanes.caffeine.cache;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 /**
  * A semi-persistent mapping from keys to values. Values are automatically loaded by the cache
  * asynchronously and are stored in the cache until either evicted or manually invalidated.
@@ -29,7 +33,8 @@ import java.util.concurrent.CompletableFuture;
  * @param <K> the type of keys maintained by this cache
  * @param <V> the type of mapped values
  */
-public interface AsyncLoadingCache<K, V> extends AsyncCache<K, V> {
+@NullMarked
+public interface AsyncLoadingCache<K, V extends @Nullable Object> extends AsyncCache<K, V> {
 
   /**
    * Returns the future associated with the {@code key} in this cache, obtaining that value from
@@ -75,7 +80,7 @@ public interface AsyncLoadingCache<K, V> extends AsyncCache<K, V> {
    *         {@link AsyncCacheLoader#asyncLoadAll} returns {@code null}, or fails when constructing
    *         the future, in which case the mapping is left unestablished
    */
-  CompletableFuture<Map<K, V>> getAll(Iterable<? extends K> keys);
+  CompletableFuture<Map<K, @NonNull V>> getAll(Iterable<? extends K> keys);
 
   /**
    * Returns a view of the entries stored in this cache as a synchronous {@link LoadingCache}. A

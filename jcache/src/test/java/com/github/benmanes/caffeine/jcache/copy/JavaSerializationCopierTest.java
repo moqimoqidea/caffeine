@@ -18,7 +18,7 @@ package com.github.benmanes.caffeine.jcache.copy;
 import static com.github.benmanes.caffeine.jcache.copy.AbstractCopier.javaDeepCopyStrategies;
 import static com.google.common.truth.Truth.assertThat;
 import static java.util.Locale.US;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -54,11 +54,13 @@ public final class JavaSerializationCopierTest {
         new JavaSerializationCopier(immutableClasses, deepCopyStrategies));
   }
 
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "copier")
   public void null_object(Copier copier) {
     assertThrows(NullPointerException.class, () -> copy(copier, null));
   }
 
+  @SuppressWarnings("NullAway")
   @Test(dataProvider = "copier")
   public void null_classLoader(Copier copier) {
     assertThrows(NullPointerException.class, () -> copier.copy(1, null));
@@ -89,7 +91,7 @@ public final class JavaSerializationCopierTest {
           InputStream in, ClassLoader classLoader) throws IOException {
         return new ObjectInputStream(in) {
           @Override protected Class<?> resolveClass(ObjectStreamClass desc)
-              throws IOException, ClassNotFoundException {
+              throws ClassNotFoundException {
             throw new ClassNotFoundException();
           }
         };
@@ -123,14 +125,14 @@ public final class JavaSerializationCopierTest {
   @Test(dataProvider = "copier")
   @SuppressWarnings({"JavaUtilDate", "JdkObsolete", "UndefinedEquals"})
   public void deepCopy_date(Copier copier) {
-    Date date = new Date();
+    var date = new Date();
     assertThat(copy(copier, date)).isEqualTo(date);
   }
 
   @Test(dataProvider = "copier")
   @SuppressWarnings({"JavaUtilDate", "JdkObsolete"})
   public void deepCopy_calendar(Copier copier) {
-    Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"), US);
+    var calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"), US);
     calendar.setTime(new Date());
     assertThat(copy(copier, calendar)).isEqualTo(calendar);
   }
@@ -153,7 +155,7 @@ public final class JavaSerializationCopierTest {
     assertThat(copy(copier, array)).asList().containsExactlyElementsIn(array).inOrder();
   }
 
-  private <T> T copy(Copier copier, T object) {
+  private static <T> T copy(Copier copier, T object) {
     return copier.copy(object, Thread.currentThread().getContextClassLoader());
   }
 

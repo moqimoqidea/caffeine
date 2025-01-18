@@ -18,6 +18,7 @@ package com.github.benmanes.caffeine.cache.simulator.admission.tinycache;
 import java.util.Random;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.Var;
 
 /**
  * This is the TinyCache sketch that is based on TinySet and TinyTable. It is adopted for fast
@@ -52,21 +53,21 @@ public final class TinyCacheSketch {
     }
     indexing.getChain(hashFunc.fpaux, chainIndex, lastIndex);
     int offset = itemsPerSet * hashFunc.fpaux.set;
-    indexing.chainStart += offset;
-    indexing.chainEnd += offset;
+    indexing.setChainStart(indexing.getChainStart() + offset);
+    indexing.setChainEnd(indexing.getChainEnd() + offset);
 
-    // Gil : I think some of these tests are, I till carefully examine this function when I have
+    // Gil : I think some of these tests are, I will carefully examine this function when I have
     // time. As far as I understand it is working right now.
-    int count = 0;
-    while (indexing.chainStart <= indexing.chainEnd) {
+    @Var int count = 0;
+    while (indexing.getChainStart() <= indexing.getChainEnd()) {
       try {
-        if (cache[indexing.chainStart % cache.length] == hashFunc.fpaux.fingerprint) {
+        if (cache[indexing.getChainStart() % cache.length] == hashFunc.fpaux.fingerprint) {
           count++;
         }
-        indexing.chainStart++;
+        indexing.setChainStart(indexing.getChainStart() + 1);
 
       } catch (RuntimeException e) {
-        System.out.println("length: " + cache.length + " Access: " + indexing.chainStart);
+        System.out.println("length: " + cache.length + " Access: " + indexing.getChainStart());
       }
     }
     return count;
@@ -105,20 +106,21 @@ public final class TinyCacheSketch {
     replaceItems(idxToAdd, hashFunc.fpaux.fingerprint, bucketStart, 1);
   }
 
+  @SuppressWarnings("Varifier")
   private void selectVictim(int bucketStart) {
     byte victimOffset = (byte) rnd.nextInt(itemsPerSet);
-    int victimChain =
-        indexing.getChainAtOffset(hashFunc.fpaux, chainIndex, lastIndex, victimOffset);
+    int victimChain = indexing.getChainAtOffset(
+        hashFunc.fpaux, chainIndex, lastIndex, victimOffset);
     if (indexing.chainExist(chainIndex[hashFunc.fpaux.set], victimChain)) {
       replace(hashFunc.fpaux, (byte) victimChain, bucketStart, victimOffset);
     } else {
-      throw new RuntimeException("Failed to replace");
+      throw new IllegalStateException("Failed to replace");
     }
   }
 
-  private void replaceItems(int idx, byte value, int start, int delta) {
+  private void replaceItems(int idx, @Var byte value, @Var int start, int delta) {
+    @Var byte entry;
     start += idx;
-    byte entry;
     do {
       entry = cache[start];
       cache[start] = value;

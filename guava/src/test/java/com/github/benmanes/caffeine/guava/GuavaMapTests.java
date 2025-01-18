@@ -15,7 +15,7 @@
  */
 package com.github.benmanes.caffeine.guava;
 
-import static com.github.benmanes.caffeine.guava.MapTestFactory.synchronousGenerator;
+import static com.github.benmanes.caffeine.guava.MapTestFactory.generator;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.cache.Cache;
@@ -31,22 +31,21 @@ import junit.framework.TestSuite;
  */
 public final class GuavaMapTests extends TestCase {
 
+  @SuppressWarnings("PMD.JUnit4SuitesShouldUseSuiteAnnotation")
   public static Test suite() {
-    TestSuite suite = new TestSuite();
-    addGuavaViewTests(suite);
-    return suite;
-  }
-
-  private static void addGuavaViewTests(TestSuite suite) {
-    suite.addTest(MapTestFactory.suite("GuavaView", synchronousGenerator(() -> {
+    var suite = new TestSuite();
+    suite.addTest(MapTestFactory.suite("GuavaView", generator(() -> {
       Cache<String, String> cache = CaffeinatedGuava.build(
           Caffeine.newBuilder().maximumSize(Long.MAX_VALUE));
       return cache.asMap();
     })));
-    suite.addTest(MapTestFactory.suite("GuavaLoadingView", synchronousGenerator(() -> {
+    suite.addTest(MapTestFactory.suite("GuavaLoadingView", generator(() -> {
+      @SuppressWarnings("NullAway")
       Cache<String, String> cache = CaffeinatedGuava.build(
-          Caffeine.newBuilder().maximumSize(Long.MAX_VALUE), key -> null);
+          Caffeine.newBuilder().maximumSize(Long.MAX_VALUE),
+          key -> { throw new AssertionError(); });
       return cache.asMap();
     })));
+    return suite;
   }
 }

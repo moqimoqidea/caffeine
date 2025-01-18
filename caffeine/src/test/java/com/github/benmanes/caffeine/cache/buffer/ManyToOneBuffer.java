@@ -50,6 +50,7 @@ final class ManyToOneBuffer<E> extends ManyToOneHeader.ReadAndWriteCounterRef<E>
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public void drainTo(Consumer<E> consumer) {
     long head = readCounter;
     long tail = writeCounterOpaque();
@@ -83,7 +84,10 @@ final class ManyToOneBuffer<E> extends ManyToOneHeader.ReadAndWriteCounterRef<E>
 }
 
 /** The namespace for field padding through inheritance. */
+@SuppressWarnings("MultiVariableDeclaration")
 final class ManyToOneHeader {
+
+  private ManyToOneHeader() {}
 
   @SuppressWarnings("PMD.AbstractClassWithoutAbstractMethod")
   abstract static class PadReadCounter<E> extends ReadBuffer<E> {

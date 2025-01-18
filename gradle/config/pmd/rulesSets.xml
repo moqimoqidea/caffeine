@@ -13,7 +13,6 @@
     <exclude name="MissingOverride"/>
     <exclude name="GuardLogStatement"/>
     <exclude name="OneDeclarationPerLine"/>
-    <exclude name="ReplaceHashtableWithMap"/>
     <exclude name="AvoidReassigningParameters"/>
     <exclude name="LiteralsFirstInComparisons"/>
   </rule>
@@ -21,13 +20,13 @@
   <rule ref="category/java/bestpractices.xml/LooseCoupling">
     <properties>
       <property name="allowedTypes" value="
-        java.util.Properties
-        ,java.util.concurrent.ConcurrentHashMap
-        ,com.google.common.collect.ImmutableMap
-        ,com.google.common.collect.ImmutableSet
-        ,com.google.common.collect.ImmutableList
-        ,com.github.benmanes.caffeine.cache.BoundedLocalCache
-        ,com.github.benmanes.caffeine.cache.UnboundedLocalCache
+        java.util.Properties,
+        java.util.concurrent.ConcurrentHashMap,
+        com.google.common.collect.ImmutableMap,
+        com.google.common.collect.ImmutableSet,
+        com.google.common.collect.ImmutableList,
+        com.github.benmanes.caffeine.cache.BoundedLocalCache,
+        com.github.benmanes.caffeine.cache.UnboundedLocalCache
       "/>
     </properties>
   </rule>
@@ -40,10 +39,10 @@
     <exclude name="ShortClassName"/>
     <exclude name="ShortMethodName"/>
     <exclude name="ConfusingTernary"/>
+    <exclude name="UseExplicitTypes"/>
     <exclude name="UnnecessaryReturn"/>
     <exclude name="UseDiamondOperator"/>
     <exclude name="UselessParentheses"/>
-    <exclude name="PrematureDeclaration"/>
     <exclude name="TooManyStaticImports"/>
     <exclude name="AtLeastOneConstructor"/>
     <exclude name="CallSuperInConstructor"/>
@@ -79,10 +78,8 @@
     <exclude name="ExcessiveImports"/>
     <exclude name="CognitiveComplexity"/>
     <exclude name="CyclomaticComplexity"/>
-    <exclude name="ExcessiveClassLength"/>
     <exclude name="ExcessivePublicCount"/>
     <exclude name="LoosePackageCoupling"/>
-    <exclude name="ExcessiveMethodLength"/>
     <exclude name="CouplingBetweenObjects"/>
     <exclude name="AvoidRethrowingException"/>
     <exclude name="AbstractClassWithoutAnyMethod"/>
@@ -99,7 +96,6 @@
 
   <rule ref="category/java/errorprone.xml">
     <exclude name="DontImportSun"/>
-    <exclude name="EmptyWhileStmt"/>
     <exclude name="NullAssignment"/>
     <exclude name="AssignmentInOperand"/>
     <exclude name="UseProperClassLoader"/>
@@ -111,17 +107,12 @@
     <exclude name="ConstructorCallsOverridableMethod"/>
     <exclude name="AvoidBranchingStatementAsLastInLoop"/>
   </rule>
-  <rule ref="category/java/errorprone.xml/AvoidDuplicateLiterals">
-    <properties>
-      <property name="skipAnnotations" value="true"/>
-      <property name="maxDuplicateLiterals" value="10"/>
-    </properties>
-  </rule>
 
   <rule ref="category/java/multithreading.xml">
     <exclude name="DoNotUseThreads"/>
     <exclude name="AvoidUsingVolatile"/>
     <exclude name="UseConcurrentHashMap"/>
+    <exclude name="AvoidSynchronizedStatement"/>
   </rule>
 
   <rule ref="category/java/performance.xml">

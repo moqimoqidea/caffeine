@@ -40,11 +40,12 @@ import com.jakewharton.fliptables.FlipTable;
  * padding may or may not have a visible effect.
  * <p>
  * This benchmark requires a JavaAgent to evaluate the object sizes and can be executed using
- * <tt>gradle -q memoryOverhead</tt>.
+ * <code>gradle -q memoryOverhead</code>.
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
-@SuppressWarnings({"LexicographicalAnnotationAttributeListing", "PMD.MethodNamingConventions"})
+@SuppressWarnings({"LexicographicalAnnotationAttributeListing",
+  "MemberName", "PMD.MethodNamingConventions", "SystemOut"})
 public final class MemoryBenchmark {
   // The number of entries added to minimize skew due to non-entry factors
   static final int FUZZY_SIZE = 25_000;
@@ -77,7 +78,7 @@ public final class MemoryBenchmark {
     softValues();
   }
 
-  private Caffeine<Object, Object> builder() {
+  private static Caffeine<Object, Object> builder() {
     // Avoid counting ForkJoinPool in estimates
     return Caffeine.newBuilder().executor(Runnable::run);
   }

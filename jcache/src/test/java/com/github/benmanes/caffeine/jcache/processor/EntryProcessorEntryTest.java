@@ -16,7 +16,7 @@
 package com.github.benmanes.caffeine.jcache.processor;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.Map;
 import java.util.Optional;
@@ -29,7 +29,8 @@ import org.testng.annotations.Test;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 public final class EntryProcessorEntryTest {
-  EntryProcessorEntry<Integer, Integer> entry = new EntryProcessorEntry<>(1, 2, Optional.empty());
+  final EntryProcessorEntry<Integer, Integer> entry =
+      new EntryProcessorEntry<>(1, 2, Optional.empty());
 
   @Test
   public void unwrap_fail() {

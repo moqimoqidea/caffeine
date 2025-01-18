@@ -17,10 +17,13 @@ package com.github.benmanes.caffeine.cache.simulator.policy.irr;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.util.List;
 import java.util.Set;
+
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
@@ -80,7 +83,7 @@ public final class DClockPolicy implements KeyOnlyPolicy {
 
   /** Returns all variations of this policy based on the configuration parameters. */
   public static Set<Policy> policies(Config config) {
-    DClockSettings settings = new DClockSettings(config);
+    var settings = new DClockSettings(config);
     return settings.percentActive().stream()
         .map(percentActive -> new DClockPolicy(settings, percentActive))
         .collect(toUnmodifiableSet());
@@ -107,7 +110,7 @@ public final class DClockPolicy implements KeyOnlyPolicy {
     // When a page is accessed for the first time, it is added to the head of the inactive list,
     // slides every existing inactive page towards the tail by one slot, and pushes the current
     // tail page out of memory.
-    Node node = new Node(key, Status.INACTIVE);
+    var node = new Node(key, Status.INACTIVE);
     node.appendToHead(headInactive);
     policyStats.recordMiss();
     data.put(key, node);
@@ -126,7 +129,7 @@ public final class DClockPolicy implements KeyOnlyPolicy {
   private void activate(Node node) {
     activeSize++;
     if (activeSize > maxActive) {
-      Node demote = headActive.next;
+      Node demote = requireNonNull(headActive.next);
       inactiveSize++;
       demote.remove();
       demote.status = Status.INACTIVE;
@@ -174,7 +177,7 @@ public final class DClockPolicy implements KeyOnlyPolicy {
     int residentSize = (inactiveSize + activeSize);
 
     if (residentSize > maximumSize) {
-      Node victim = headInactive.prev;
+      Node victim = requireNonNull(headInactive.prev);
       policyStats.recordEviction();
 
       evictions++;
@@ -193,7 +196,7 @@ public final class DClockPolicy implements KeyOnlyPolicy {
     // than that are dismissed.
     int nonResidentSize = data.size() - maximumSize;
     if (nonResidentSize > maxActive) {
-      Node node = headNonResident.prev;
+      Node node = requireNonNull(headNonResident.prev);
       data.remove(node.key);
       node.remove();
     }
@@ -220,13 +223,13 @@ public final class DClockPolicy implements KeyOnlyPolicy {
 
   @Override
   public void finished() {
-    int active = (int) data.values().stream()
+    long active = data.values().stream()
         .filter(node -> node.status == Status.ACTIVE)
         .count();
-    int inactive = (int) data.values().stream()
+    long inactive = data.values().stream()
         .filter(node -> node.status == Status.INACTIVE)
         .count();
-    int nonResident = (int) data.values().stream()
+    long nonResident = data.values().stream()
         .filter(node -> node.status == Status.NON_RESIDENT)
         .count();
 
@@ -249,10 +252,11 @@ public final class DClockPolicy implements KeyOnlyPolicy {
   static final class Node {
     final long key;
 
+    @Nullable Node prev;
+    @Nullable Node next;
+    @Nullable Status status;
+
     long nonResidentAge;
-    Status status;
-    Node prev;
-    Node next;
 
     public Node() {
       this.key = Integer.MIN_VALUE;
@@ -266,7 +270,7 @@ public final class DClockPolicy implements KeyOnlyPolicy {
 
     /** Appends the node to the head of the list. */
     public void appendToHead(Node head) {
-      Node first = head.next;
+      Node first = requireNonNull(head.next);
       first.prev = this;
       head.next = this;
       next = first;
@@ -277,11 +281,13 @@ public final class DClockPolicy implements KeyOnlyPolicy {
     public void moveToHead(Node head) {
       // unlink
       if (prev != null) {
+        requireNonNull(next);
         prev.next = next;
         next.prev = prev;
       }
 
       // link
+      requireNonNull(head.next);
       prev = head;
       next = head.next;
       prev.next = this;
@@ -290,6 +296,9 @@ public final class DClockPolicy implements KeyOnlyPolicy {
 
     /** Removes the node from the list. */
     public void remove() {
+      requireNonNull(prev);
+      requireNonNull(next);
+
       prev.next = next;
       next.prev = prev;
       prev = next = null;
@@ -304,7 +313,7 @@ public final class DClockPolicy implements KeyOnlyPolicy {
     }
   }
 
-  static final class DClockSettings extends BasicSettings {
+  public static final class DClockSettings extends BasicSettings {
     public DClockSettings(Config config) {
       super(config);
     }

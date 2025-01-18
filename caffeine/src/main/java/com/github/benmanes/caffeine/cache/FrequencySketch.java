@@ -17,7 +17,7 @@ package com.github.benmanes.caffeine.cache;
 
 import static com.github.benmanes.caffeine.cache.Caffeine.requireArgument;
 
-import org.checkerframework.checker.index.qual.NonNegative;
+import com.google.errorprone.annotations.Var;
 
 /**
  * A probabilistic multiset for estimating the popularity of an element within a time window. The
@@ -79,13 +79,14 @@ final class FrequencySketch<E> {
   public FrequencySketch() {}
 
   /**
-   * Initializes and increases the capacity of this <tt>FrequencySketch</tt> instance, if necessary,
+   * Initializes and increases the capacity of this {@code FrequencySketch} instance, if necessary,
    * to ensure that it can accurately estimate the popularity of elements given the maximum size of
    * the cache. This operation forgets all previous counts when resizing.
    *
    * @param maximumSize the maximum size of the cache
    */
-  public void ensureCapacity(@NonNegative long maximumSize) {
+  @SuppressWarnings("Varifier")
+  public void ensureCapacity(long maximumSize) {
     requireArgument(maximumSize >= 0);
     int maximum = (int) Math.min(maximumSize, Integer.MAX_VALUE >>> 1);
     if ((table != null) && (table.length >= maximum)) {
@@ -115,13 +116,13 @@ final class FrequencySketch<E> {
    * @param e the element to count occurrences of
    * @return the estimated number of occurrences of the element; possibly zero but never negative
    */
-  @NonNegative
+  @SuppressWarnings("Varifier")
   public int frequency(E e) {
     if (isNotInitialized()) {
       return 0;
     }
 
-    int[] count = new int[4];
+    @Var int frequency = Integer.MAX_VALUE;
     int blockHash = spread(e.hashCode());
     int counterHash = rehash(blockHash);
     int block = (blockHash & blockMask) << 3;
@@ -129,9 +130,11 @@ final class FrequencySketch<E> {
       int h = counterHash >>> (i << 3);
       int index = (h >>> 1) & 15;
       int offset = h & 1;
-      count[i] = (int) ((table[block + offset + (i << 1)] >>> (index << 2)) & 0xfL);
+      int slot = block + offset + (i << 1);
+      int count = (int) ((table[slot] >>> (index << 2)) & 0xfL);
+      frequency = Math.min(frequency, count);
     }
-    return Math.min(Math.min(count[0], count[1]), Math.min(count[2], count[3]));
+    return frequency;
   }
 
   /**
@@ -141,35 +144,45 @@ final class FrequencySketch<E> {
    *
    * @param e the element to add
    */
-  @SuppressWarnings("ShortCircuitBoolean")
+  @SuppressWarnings({"ShortCircuitBoolean", "UnnecessaryLocalVariable"})
   public void increment(E e) {
     if (isNotInitialized()) {
       return;
     }
 
-    int[] index = new int[8];
     int blockHash = spread(e.hashCode());
     int counterHash = rehash(blockHash);
     int block = (blockHash & blockMask) << 3;
-    for (int i = 0; i < 4; i++) {
-      int h = counterHash >>> (i << 3);
-      index[i] = (h >>> 1) & 15;
-      int offset = h & 1;
-      index[i + 4] = block + offset + (i << 1);
-    }
+
+    // Loop unrolling improves throughput by 10m ops/s
+    int h0 = counterHash;
+    int h1 = counterHash >>> 8;
+    int h2 = counterHash >>> 16;
+    int h3 = counterHash >>> 24;
+
+    int index0 = (h0 >>> 1) & 15;
+    int index1 = (h1 >>> 1) & 15;
+    int index2 = (h2 >>> 1) & 15;
+    int index3 = (h3 >>> 1) & 15;
+
+    int slot0 = block + (h0 & 1);
+    int slot1 = block + (h1 & 1) + 2;
+    int slot2 = block + (h2 & 1) + 4;
+    int slot3 = block + (h3 & 1) + 6;
+
     boolean added =
-          incrementAt(index[4], index[0])
-        | incrementAt(index[5], index[1])
-        | incrementAt(index[6], index[2])
-        | incrementAt(index[7], index[3]);
+          incrementAt(slot0, index0)
+        | incrementAt(slot1, index1)
+        | incrementAt(slot2, index2)
+        | incrementAt(slot3, index3);
 
     if (added && (++size == sampleSize)) {
       reset();
     }
   }
 
-  /** Applies a supplemental hash functions to defends against poor quality hash. */
-  static int spread(int x) {
+  /** Applies a supplemental hash function to defend against a poor quality hash. */
+  static int spread(@Var int x) {
     x ^= x >>> 17;
     x *= 0xed5ad4bb;
     x ^= x >>> 11;
@@ -179,7 +192,7 @@ final class FrequencySketch<E> {
   }
 
   /** Applies another round of hashing for additional randomization. */
-  static int rehash(int x) {
+  static int rehash(@Var int x) {
     x *= 0x31848bab;
     x ^= x >>> 14;
     return x;
@@ -204,7 +217,7 @@ final class FrequencySketch<E> {
 
   /** Reduces every counter by half of its original value. */
   void reset() {
-    int count = 0;
+    @Var int count = 0;
     for (int i = 0; i < table.length; i++) {
       count += Long.bitCount(table[i] & ONE_MASK);
       table[i] = (table[i] >>> 1) & RESET_MASK;

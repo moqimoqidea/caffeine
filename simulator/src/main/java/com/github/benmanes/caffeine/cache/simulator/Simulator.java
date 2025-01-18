@@ -41,7 +41,7 @@ import com.typesafe.config.ConfigFactory;
 
 /**
  * A simulator that broadcasts the recorded cache events to each policy and generates an aggregated
- * report. See <tt>reference.conf</tt> for details on the configuration.
+ * report. See <code>reference.conf</code> for details on the configuration.
  * <p>
  * The simulator reports the hit rate of each of the policy being evaluated. A miss may occur
  * due to,
@@ -119,7 +119,7 @@ public final class Simulator {
   }
 
   /** Returns a trace reader for the access events. */
-  private TraceReader getTraceReader(BasicSettings settings) {
+  private static TraceReader getTraceReader(BasicSettings settings) {
     if (settings.trace().isSynthetic()) {
       return Synthetic.generate(settings.trace());
     }
@@ -137,7 +137,7 @@ public final class Simulator {
   }
 
   /** Throws the underlying cause for the simulation failure. */
-  private void throwError(RuntimeException error, Iterable<PolicyActor> policies) {
+  private static void throwError(RuntimeException error, Iterable<PolicyActor> policies) {
     if (!Thread.currentThread().isInterrupted()) {
       throw error;
     }
@@ -146,7 +146,9 @@ public final class Simulator {
         try {
           policy.completed().join();
         } catch (CompletionException e) {
-          Throwables.throwIfUnchecked(e.getCause());
+          if (e.getCause() != null) {
+            Throwables.throwIfUnchecked(e.getCause());
+          }
           e.addSuppressed(error);
           throw e;
         }

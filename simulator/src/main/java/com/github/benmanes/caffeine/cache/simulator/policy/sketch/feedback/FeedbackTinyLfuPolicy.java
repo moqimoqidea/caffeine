@@ -16,11 +16,15 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.sketch.feedback;
 
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
 
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
+
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
-import com.github.benmanes.caffeine.cache.simulator.admission.TinyLfu;
+import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
+import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
 import com.github.benmanes.caffeine.cache.simulator.membership.Membership;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
@@ -46,7 +50,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 public final class FeedbackTinyLfuPolicy implements KeyOnlyPolicy {
   private final Long2ObjectMap<Node> data;
   private final PolicyStats policyStats;
-  private final TinyLfu admittor;
+  private final Admittor admittor;
   private final int maximumSize;
   private final Node head;
 
@@ -63,9 +67,9 @@ public final class FeedbackTinyLfuPolicy implements KeyOnlyPolicy {
 
   public FeedbackTinyLfuPolicy(Config config) {
     this.policyStats = new PolicyStats(name());
-    FeedbackTinyLfuSettings settings = new FeedbackTinyLfuSettings(config);
+    var settings = new FeedbackTinyLfuSettings(config);
     this.maximumSize = Math.toIntExact(settings.maximumSize());
-    this.admittor = new TinyLfu(settings.config(), policyStats);
+    this.admittor = Admission.TINYLFU.from(settings.config(), policyStats);
     this.data = new Long2ObjectOpenHashMap<>();
     this.head = new Node();
 
@@ -107,7 +111,7 @@ public final class FeedbackTinyLfuPolicy implements KeyOnlyPolicy {
       admittor.record(key);
     }
 
-    Node node = new Node(key);
+    var node = new Node(key);
     node.appendToTail(head);
     data.put(key, node);
     evict(node);
@@ -125,7 +129,7 @@ public final class FeedbackTinyLfuPolicy implements KeyOnlyPolicy {
   private void evict(Node candidate) {
     if (data.size() > maximumSize) {
       Node evict;
-      Node victim = head.next;
+      Node victim = requireNonNull(head.next);
       if (admittor.admit(candidate.key, victim.key)) {
         evict = victim;
       } else if (adapt(candidate)) {
@@ -180,8 +184,8 @@ public final class FeedbackTinyLfuPolicy implements KeyOnlyPolicy {
   static final class Node {
     final long key;
 
-    Node prev;
-    Node next;
+    @Nullable Node prev;
+    @Nullable Node next;
 
     /** Creates a new sentinel node. */
     public Node() {
@@ -202,6 +206,7 @@ public final class FeedbackTinyLfuPolicy implements KeyOnlyPolicy {
 
     /** Appends the node to the tail of the list. */
     public void appendToTail(Node head) {
+      requireNonNull(head.prev);
       Node tail = head.prev;
       head.prev = this;
       tail.next = this;
@@ -211,6 +216,9 @@ public final class FeedbackTinyLfuPolicy implements KeyOnlyPolicy {
 
     /** Removes the node from the list. */
     public void remove() {
+      requireNonNull(prev);
+      requireNonNull(next);
+
       prev.next = next;
       next.prev = prev;
       next = prev = null;
@@ -238,10 +246,11 @@ public final class FeedbackTinyLfuPolicy implements KeyOnlyPolicy {
       return config().getDouble("feedback-tiny-lfu.adaptive-fpp");
     }
     public Config filterConfig(int sampleSize) {
-      Map<String, Object> properties = Map.of(
-          "membership.fpp", adaptiveFpp(),
-          "maximum-size", sampleSize);
-      return ConfigFactory.parseMap(properties).withFallback(config());
+      return ConfigFactory
+          .parseMap(Map.of(
+              "membership.fpp", adaptiveFpp(),
+              "maximum-size", sampleSize))
+          .withFallback(config());
     }
   }
 }

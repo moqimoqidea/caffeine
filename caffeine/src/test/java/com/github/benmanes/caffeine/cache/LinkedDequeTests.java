@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Queue;
 import java.util.function.Supplier;
 
+import org.jspecify.annotations.Nullable;
+
 import com.github.benmanes.caffeine.cache.AccessOrderDeque.AccessOrder;
 import com.github.benmanes.caffeine.cache.WriteOrderDeque.WriteOrder;
 import com.google.common.base.MoreObjects;
@@ -51,14 +53,15 @@ public final class LinkedDequeTests extends TestCase {
   // cause unexpected mutations. Instead, a different collection type should be used for comparison
   static final ThreadLocal<Boolean> useTarget = ThreadLocal.withInitial(() -> false);
 
+  @SuppressWarnings("PMD.JUnit4SuitesShouldUseSuiteAnnotation")
   public static Test suite() {
     var suite = new TestSuite();
-    suite.addTest(suite("AccessOrderDeque", AccessOrderDeque::new));
-    suite.addTest(suite("WriteOrderDeque", WriteOrderDeque::new));
+    suite.addTest(newTestSuite("AccessOrderDeque", AccessOrderDeque::new));
+    suite.addTest(newTestSuite("WriteOrderDeque", WriteOrderDeque::new));
     return suite;
   }
 
-  static Test suite(String name, Supplier<LinkedDeque<LinkedValue>> supplier) {
+  private static Test newTestSuite(String name, Supplier<LinkedDeque<LinkedValue>> supplier) {
     return QueueTestSuiteBuilder
         .using(new TestLinkedValueGenerator() {
           @Override public Queue<LinkedValue> create(LinkedValue[] elements) {
@@ -90,7 +93,7 @@ public final class LinkedDequeTests extends TestCase {
 
     @Override
     public SampleElements<LinkedValue> samples() {
-      return new SampleElements<LinkedValue>(b, a, c, d, e);
+      return new SampleElements<>(b, a, c, d, e);
     }
 
     @Override
@@ -117,50 +120,50 @@ public final class LinkedDequeTests extends TestCase {
   static final class LinkedValue implements AccessOrder<LinkedValue>, WriteOrder<LinkedValue> {
     final String value;
 
-    LinkedValue prev;
-    LinkedValue next;
+    @Nullable LinkedValue prev;
+    @Nullable LinkedValue next;
 
     LinkedValue(String value) {
       this.value = value;
     }
 
     @Override
-    public LinkedValue getPreviousInAccessOrder() {
+    public @Nullable LinkedValue getPreviousInAccessOrder() {
       return prev;
     }
 
     @Override
-    public void setPreviousInAccessOrder(LinkedValue prev) {
+    public void setPreviousInAccessOrder(@Nullable LinkedValue prev) {
       this.prev = prev;
     }
 
     @Override
-    public LinkedValue getNextInAccessOrder() {
+    public @Nullable LinkedValue getNextInAccessOrder() {
       return next;
     }
 
     @Override
-    public void setNextInAccessOrder(LinkedValue next) {
+    public void setNextInAccessOrder(@Nullable LinkedValue next) {
       this.next = next;
     }
 
     @Override
-    public LinkedValue getPreviousInWriteOrder() {
+    public @Nullable LinkedValue getPreviousInWriteOrder() {
       return prev;
     }
 
     @Override
-    public void setPreviousInWriteOrder(LinkedValue prev) {
+    public void setPreviousInWriteOrder(@Nullable LinkedValue prev) {
       this.prev = prev;
     }
 
     @Override
-    public LinkedValue getNextInWriteOrder() {
+    public @Nullable LinkedValue getNextInWriteOrder() {
       return next;
     }
 
     @Override
-    public void setNextInWriteOrder(LinkedValue next) {
+    public void setNextInWriteOrder(@Nullable LinkedValue next) {
       this.next = next;
     }
 

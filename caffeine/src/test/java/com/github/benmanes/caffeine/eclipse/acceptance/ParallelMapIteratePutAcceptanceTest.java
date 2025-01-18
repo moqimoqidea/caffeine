@@ -39,7 +39,7 @@ public abstract class ParallelMapIteratePutAcceptanceTest {
       LoggerFactory.getLogger(ParallelMapIteratePutAcceptanceTest.class);
   private static final long SEED = 0x12345678ABCDL;
 
-  private static final long PUT_REPEAT = 100;
+  private static final int PUT_REPEAT = 100;
   private static final int CHUNK_SIZE = 16000;
   private static final int MAX_THREADS = 48;
 
@@ -63,7 +63,7 @@ public abstract class ParallelMapIteratePutAcceptanceTest {
   }
 
   @Test
-  public void testMapIteratePut() {
+  public void mapIteratePut() {
     int constSize = 100_000;
     int size = 10_000_000;
     Integer[] contents = new Integer[size];
@@ -84,13 +84,13 @@ public abstract class ParallelMapIteratePutAcceptanceTest {
     ExecutorService executorService = new ThreadPoolExecutor(MAX_THREADS, MAX_THREADS, 0,
         TimeUnit.SECONDS, new LinkedBlockingDeque<>(MAX_THREADS));
     int threads = 10;
-    runPutTest1(threads, contents, constContents, executorService, false);
+    runPutTest1(threads, contents, constContents, executorService, /* warmup= */ false);
     executorService.shutdown();
   }
 
   private void runPutTest1(int threadCount, Integer[] contents, Integer[] constContents,
       ExecutorService executorService, boolean warmup) {
-    long ops = ((warmup ? 100_000 : 100_000 * PUT_REPEAT) / contents.length) + 1;
+    int ops = ((warmup ? 100_000 : 100_000 * PUT_REPEAT) / contents.length) + 1;
     Future<?>[] futures = new Future<?>[threadCount];
     for (int i = 0; i < ops; i++) {
       ConcurrentMutableMap<Integer, Integer> map = newMap(constContents.length);

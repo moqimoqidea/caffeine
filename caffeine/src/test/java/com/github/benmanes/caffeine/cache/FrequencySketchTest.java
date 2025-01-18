@@ -16,7 +16,7 @@
 package com.github.benmanes.caffeine.cache;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -26,6 +26,7 @@ import org.testng.annotations.Test;
 /**
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@SuppressWarnings("ClassEscapesDefinedScope")
 public final class FrequencySketchTest {
   final Integer item = ThreadLocalRandom.current().nextInt();
 
@@ -56,7 +57,7 @@ public final class FrequencySketchTest {
   @Test(dataProvider = "sketch")
   public void ensureCapacity_larger(FrequencySketch<Integer> sketch) {
     int size = sketch.table.length;
-    sketch.ensureCapacity(2 * size);
+    sketch.ensureCapacity(2L * size);
     assertThat(sketch.table).hasLength(2 * size);
     assertThat(sketch.sampleSize).isEqualTo(10 * 2 * size);
     assertThat(sketch.blockMask).isEqualTo(((2 * size) >> 3) - 1);
@@ -124,13 +125,13 @@ public final class FrequencySketchTest {
     for (int i = 0; i < 100_000; i++) {
       sketch.increment(i);
     }
-    for (long item : sketch.table) {
-      assertThat(Long.bitCount(item)).isEqualTo(64);
+    for (long slot : sketch.table) {
+      assertThat(Long.bitCount(slot)).isEqualTo(64);
     }
 
     sketch.reset();
-    for (long item : sketch.table) {
-      assertThat(item).isEqualTo(FrequencySketch.RESET_MASK);
+    for (long slot : sketch.table) {
+      assertThat(slot).isEqualTo(FrequencySketch.RESET_MASK);
     }
   }
 

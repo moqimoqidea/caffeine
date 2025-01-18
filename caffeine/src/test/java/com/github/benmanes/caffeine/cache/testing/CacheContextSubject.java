@@ -25,8 +25,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableListMultimap.toImmutableListMultimap;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.ImmutableMultiset.toImmutableMultiset;
-import static com.google.common.truth.OptionalLongSubject.optionalLongs;
-import static com.google.common.truth.StreamSubject.streams;
 import static com.google.common.truth.Truth.assertAbout;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -34,12 +32,14 @@ import static java.util.function.Function.identity;
 
 import java.util.AbstractMap.SimpleEntry;
 import java.util.Arrays;
-import java.util.List;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
+
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Policy.CacheEntry;
@@ -51,6 +51,7 @@ import com.github.benmanes.caffeine.cache.testing.CacheSpec.Listener;
 import com.github.benmanes.caffeine.cache.testing.RemovalListeners.ConsumingRemovalListener;
 import com.github.benmanes.caffeine.testing.Int;
 import com.google.common.base.CaseFormat;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.Multimaps;
 import com.google.common.truth.FailureMetadata;
@@ -66,9 +67,9 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 public final class CacheContextSubject extends Subject {
   private final CacheContext actual;
 
-  CacheContextSubject(FailureMetadata metadata, CacheContext subject) {
+  CacheContextSubject(FailureMetadata metadata, @Nullable CacheContext subject) {
     super(metadata, subject);
-    this.actual = subject;
+    this.actual = requireNonNull(subject);
   }
 
   public static Factory<CacheContextSubject, CacheContext> context() {
@@ -83,8 +84,7 @@ public final class CacheContextSubject extends Subject {
   public void hasWeightedSize(long expectedSize) {
     checkArgument(expectedSize >= 0, "expectedSize (%s) must be >= 0", expectedSize);
     actual.cache().policy().eviction().ifPresentOrElse(policy -> {
-      check("weightedSize()").about(optionalLongs())
-          .that(policy.weightedSize()).hasValue(expectedSize);
+      check("weightedSize()").that(policy.weightedSize()).hasValue(expectedSize);
     }, () -> {
       long weight = actual.cache().asMap().entrySet().stream()
           .mapToLong(entry -> actual.weigher().weigh(entry.getKey(), entry.getValue()))
@@ -97,7 +97,7 @@ public final class CacheContextSubject extends Subject {
   public void hasWeightedSizeLessThan(long other) {
     checkArgument(other >= 0, "other (%s) must be >= 0", other);
     actual.cache().policy().eviction().ifPresentOrElse(policy -> {
-      check("weightedSize()").about(optionalLongs()).that(policy.weightedSize()).isPresent();
+      check("weightedSize()").that(policy.weightedSize()).isPresent();
       check("weightedSize()").that(policy.weightedSize().orElseThrow()).isLessThan(other);
     }, () -> {
       long weight = actual.cache().asMap().entrySet().stream()
@@ -214,9 +214,9 @@ public final class CacheContextSubject extends Subject {
     private final CacheContext actual;
     private final boolean isDirect;
 
-    private StatsSubject(FailureMetadata metadata, CacheContext context) {
+    private StatsSubject(FailureMetadata metadata, @Nullable CacheContext context) {
       super(metadata, context);
-      this.actual = context;
+      this.actual = requireNonNull(context);
       this.isDirect = !context.isRecordingStats()
           || (context.executorType() == CacheExecutor.DIRECT);
     }
@@ -279,11 +279,11 @@ public final class CacheContextSubject extends Subject {
     static final Factory<ListenerSubject, CacheContext> LISTENERS_FACTORY =
         factoryOf(RemovalListenerType.values());
 
-    private final Map<RemovalListenerType, RemovalListener<Int, Int>> actual;
+    private final ImmutableMap<RemovalListenerType, RemovalListener<Int, Int>> actual;
     private final boolean isDirect;
 
     private ListenerSubject(FailureMetadata metadata, CacheContext context,
-        Map<RemovalListenerType, RemovalListener<Int, Int>> subject) {
+        ImmutableMap<RemovalListenerType, RemovalListener<Int, Int>> subject) {
       super(metadata, subject);
       this.actual = subject;
       this.isDirect = (context.executorType() == CacheExecutor.DIRECT);
@@ -292,6 +292,7 @@ public final class CacheContextSubject extends Subject {
     private static Factory<ListenerSubject, CacheContext> factoryOf(
         RemovalListenerType... removalListenerTypes) {
       return (metadata, context) -> {
+        requireNonNull(context);
         var subject = Arrays.stream(removalListenerTypes)
             .filter(listener -> listener.isConsumingListener(context))
             .collect(toImmutableMap(identity(), listener -> listener.instance(context)));
@@ -320,14 +321,14 @@ public final class CacheContextSubject extends Subject {
     public void containsExactlyValues(Object... values) {
       awaitUntil((type, listener) -> {
         var stream = listener.removed().stream().map(RemovalNotification::getValue);
-        check(type).about(streams()).that(stream).containsExactly(values);
+        check(type).that(stream).containsExactly(values);
       });
     }
 
     public void hasNoEvictions() {
       awaitUntil((type, listener) -> {
         var stream = listener.removed().stream().filter(entry -> entry.getCause().wasEvicted());
-        check(type).about(streams()).that(stream).isEmpty();
+        check(type).that(stream).isEmpty();
       });
     }
 
@@ -358,7 +359,7 @@ public final class CacheContextSubject extends Subject {
       }
 
       @CanIgnoreReturnValue
-      public Exclusive contains(Int key, Int value) {
+      public Exclusive contains(@Nullable Int key, @Nullable Int value) {
         return contains(new SimpleEntry<>(key, value));
       }
 
@@ -368,7 +369,7 @@ public final class CacheContextSubject extends Subject {
       }
 
       @CanIgnoreReturnValue
-      public Exclusive contains(List<Entry<Int, Int>> entries) {
+      public Exclusive contains(Collection<Entry<Int, Int>> entries) {
         return contains(entries.toArray(Map.Entry[]::new));
       }
 
@@ -378,8 +379,8 @@ public final class CacheContextSubject extends Subject {
           var notifications = Arrays.stream(entries)
               .map(entry -> new RemovalNotification<>(entry.getKey(), entry.getValue(), cause))
               .collect(toImmutableListMultimap(RemovalNotification::getCause, identity()));
-          var actual = Multimaps.index(listener.removed(), RemovalNotification::getCause);
-          check(type).that(actual).containsAtLeastEntriesIn(notifications);
+          var removed = Multimaps.index(listener.removed(), RemovalNotification::getCause);
+          check(type).that(removed).containsAtLeastEntriesIn(notifications);
         });
         return new Exclusive(entries.length);
       }

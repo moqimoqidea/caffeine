@@ -30,7 +30,7 @@ import com.github.benmanes.caffeine.jcache.configuration.CaffeineConfiguration;
 import com.google.common.util.concurrent.MoreExecutors;
 
 /**
- * The test cases that ensure the <tt>maximum size</tt> setting is honored by the cache and removal
+ * The test cases that ensure the maximum size< setting is honored by the cache and removal
  * notifications are published.
  *
  * @author ben.manes@gmail.com (Ben Manes)
@@ -47,8 +47,8 @@ public final class JCacheMaximumSizeTest extends AbstractJCacheTest {
     var configuration = new CaffeineConfiguration<Integer, Integer>();
     configuration.setMaximumSize(OptionalLong.of(MAXIMUM));
     var listenerConfiguration = new MutableCacheEntryListenerConfiguration<Integer, Integer>(
-        () -> listener, /* filterFactory */ null,
-        /* isOldValueRequired */ false, /* isSynchronous */ true);
+        () -> listener, /* filterFactory= */ null,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ true);
     configuration.addCacheEntryListenerConfiguration(listenerConfiguration);
     configuration.setExecutorFactory(MoreExecutors::directExecutor);
     return configuration;

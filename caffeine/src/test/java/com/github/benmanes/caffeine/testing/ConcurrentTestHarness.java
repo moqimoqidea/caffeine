@@ -21,10 +21,12 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
+import com.google.common.base.Throwables;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -37,7 +39,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
  * thread. This harness can be used for performance tests, investigations of
  * lock contention, etc.
  * <p/>
- * This code was adapted from <tt>Java Concurrency in Practice</tt>, using an
+ * This code was adapted from <code>Java Concurrency in Practice</code>, using an
  * example of a {@link CountDownLatch} for starting and stopping threads in
  * timing tests.
  *
@@ -55,6 +57,11 @@ public final class ConcurrentTestHarness {
   /** Executes the task using the shared thread pool. */
   public static void execute(Runnable task) {
     executor.execute(task);
+  }
+
+  /** Submits the task using the shared thread pool and returns a future representing its result. */
+  public static Future<?> submit(Runnable task) {
+    return executor.submit(task);
   }
 
   /**
@@ -77,22 +84,26 @@ public final class ConcurrentTestHarness {
    * @return the result of each task and the full execution time, in nanoseconds
    */
   @CanIgnoreReturnValue
+  @SuppressWarnings("InterruptedExceptionSwallowed")
   public static <T> TestResult<T> timeTasks(int nThreads, Callable<T> task) {
     var startGate = new CountDownLatch(1);
     var endGate = new CountDownLatch(nThreads);
     var results = new AtomicReferenceArray<T>(nThreads);
 
     for (int i = 0; i < nThreads; i++) {
-      final int index = i;
+      int index = i;
       executor.execute(() -> {
         try {
           startGate.await();
           try {
             results.set(index, task.call());
+          } catch (Exception e) {
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
           } finally {
             endGate.countDown();
           }
-        } catch (Exception e) {
+        } catch (InterruptedException e) {
           throw new RuntimeException(e);
         }
       });
@@ -102,7 +113,7 @@ public final class ConcurrentTestHarness {
     startGate.countDown();
     Uninterruptibles.awaitUninterruptibly(endGate);
     long end = System.nanoTime();
-    return new TestResult<T>(end - start, toList(results));
+    return new TestResult<>(end - start, toList(results));
   }
 
   /**

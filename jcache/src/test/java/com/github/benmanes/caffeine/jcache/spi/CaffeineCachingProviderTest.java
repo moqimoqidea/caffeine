@@ -16,14 +16,11 @@
 package com.github.benmanes.caffeine.jcache.spi;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -34,6 +31,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import com.github.benmanes.caffeine.jcache.configuration.CaffeineConfiguration;
+import com.google.common.util.concurrent.Uninterruptibles;
 
 /**
  * @author ben.manes@gmail.com (Ben Manes)
@@ -119,28 +117,30 @@ public final class CaffeineCachingProviderTest {
   public void osgi_getCache() {
     try (var provider = new CaffeineCachingProvider()) {
       provider.isOsgiComponent = true;
-      var cacheManager = provider.getCacheManager(
-          provider.getDefaultURI(), provider.getDefaultClassLoader());
-      assertThat(cacheManager.getCache("test-cache", Object.class, Object.class)).isNotNull();
-      assertThat(cacheManager.getCache("test-cache")).isNotNull();
-
-      cacheManager.createCache("new-cache", new CaffeineConfiguration<>());
-      assertThat(cacheManager.getCache("new-cache")).isNotNull();
+      try (var cacheManager = provider.getCacheManager(
+          provider.getDefaultURI(), provider.getDefaultClassLoader())) {
+        assertThat(cacheManager.getCache("test-cache", Object.class, Object.class)).isNotNull();
+        assertThat(cacheManager.getCache("test-cache")).isNotNull();
+        try (var cache = cacheManager.createCache("new-cache", new CaffeineConfiguration<>())) {
+          assertThat(cacheManager.getCache("new-cache")).isSameInstanceAs(cache);
+        }
+      }
     }
   }
 
-  private void runWithClassloader(Consumer<CachingProvider> consumer) {
-    var provider = new AtomicReference<CachingProvider>();
-    new Thread(() -> {
+  private static void runWithClassloader(Consumer<CachingProvider> consumer) {
+    var reference = new AtomicReference<CachingProvider>();
+    var thread = new Thread(() -> {
       Thread.currentThread().setContextClassLoader(new ClassLoader() {});
-      provider.set(new CaffeineCachingProvider());
-    }).start();
-    await().untilAtomic(provider, is(not(nullValue())));
+      reference.set(new CaffeineCachingProvider());
+    });
+    thread.start();
+    Uninterruptibles.joinUninterruptibly(thread, Duration.ofMinutes(1));
 
     var classLoader = Thread.currentThread().getContextClassLoader();
     Thread.currentThread().setContextClassLoader(new ClassLoader() {});
-    try {
-      consumer.accept(provider.get());
+    try (var provider = reference.get()) {
+      consumer.accept(provider);
     } finally {
       Thread.currentThread().setContextClassLoader(classLoader);
     }

@@ -35,7 +35,9 @@ import javax.cache.event.CacheEntryEventFilter;
 import javax.cache.event.CacheEntryListener;
 import javax.cache.event.EventType;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
+
+import com.google.errorprone.annotations.Var;
 
 /**
  * A dispatcher that publishes cache events to listeners for asynchronous execution.
@@ -55,7 +57,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *       listeners to be delayed until the executor is able to process the work.
  * </ul>
  * <p>
- * Some listeners may be configured as <tt>synchronous</tt>, meaning that the publishing thread
+ * Some listeners may be configured as <code>synchronous</code>, meaning that the publishing thread
  * should wait until the listener has processed the event. The calling thread should publish within
  * an atomic block that mutates the entry, and complete the operation by calling
  * {@link #awaitSynchronous()} or {@link #ignoreSynchronous()}.
@@ -65,8 +67,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 public final class EventDispatcher<K, V> {
   static final Logger logger = System.getLogger(EventDispatcher.class.getName());
 
-  final ConcurrentMap<Registration<K, V>, ConcurrentMap<K, CompletableFuture<Void>>> dispatchQueues;
-  final ThreadLocal<List<CompletableFuture<Void>>> pending;
+  final ConcurrentMap<Registration<K, V>, ConcurrentMap<K, CompletableFuture<@Nullable Void>>> dispatchQueues;
+  final ThreadLocal<List<CompletableFuture<@Nullable Void>>> pending;
   final Executor executor;
 
   public EventDispatcher(Executor executor) {
@@ -93,13 +95,12 @@ public final class EventDispatcher<K, V> {
     var listener = new EventTypeAwareListener<K, V>(
         configuration.getCacheEntryListenerFactory().create());
 
-    CacheEntryEventFilter<K, V> filter = event -> true;
-    if (configuration.getCacheEntryEventFilterFactory() != null) {
-      filter = new EventTypeFilter<>(listener,
-          configuration.getCacheEntryEventFilterFactory().create());
-    }
+    var factory = configuration.getCacheEntryEventFilterFactory();
+    CacheEntryEventFilter<K, V> filter = (factory == null)
+        ? event -> true
+        : new EventTypeFilter<>(listener, factory.create());
 
-    var registration = new Registration<K, V>(configuration, filter, listener);
+    var registration = new Registration<>(configuration, filter, listener);
     dispatchQueues.putIfAbsent(registration, new ConcurrentHashMap<>());
   }
 
@@ -122,8 +123,8 @@ public final class EventDispatcher<K, V> {
    * @param value the entry's value
    */
   public void publishCreated(Cache<K, V> cache, K key, V value) {
-    publish(cache, EventType.CREATED, key, /* hasOldValue */ false,
-        /* oldValue */ null, /* newValue */ value, /* quiet */ false);
+    publish(cache, EventType.CREATED, key, /* hasOldValue= */ false,
+        /* oldValue= */ null, /* newValue= */ value, /* quiet= */ false);
   }
 
   /**
@@ -135,8 +136,8 @@ public final class EventDispatcher<K, V> {
    * @param newValue the entry's new value
    */
   public void publishUpdated(Cache<K, V> cache, K key, V oldValue, V newValue) {
-    publish(cache, EventType.UPDATED, key, /* hasOldValue */ true,
-        oldValue, newValue, /* quiet */ false);
+    publish(cache, EventType.UPDATED, key, /* hasOldValue= */ true,
+        oldValue, newValue, /* quiet= */ false);
   }
 
   /**
@@ -147,8 +148,8 @@ public final class EventDispatcher<K, V> {
    * @param value the entry's value
    */
   public void publishRemoved(Cache<K, V> cache, K key, V value) {
-    publish(cache, EventType.REMOVED, key, /* hasOldValue */ true,
-        /* oldValue */ value, /* newValue */ value, /* quiet */ false);
+    publish(cache, EventType.REMOVED, key, /* hasOldValue= */ true,
+        /* oldValue= */ value, /* newValue= */ value, /* quiet= */ false);
   }
 
   /**
@@ -160,8 +161,8 @@ public final class EventDispatcher<K, V> {
    * @param value the entry's value
    */
   public void publishRemovedQuietly(Cache<K, V> cache, K key, V value) {
-    publish(cache, EventType.REMOVED, key, /* hasOldValue */ true,
-        /* oldValue */ value, /* newValue */ value, /* quiet */ true);
+    publish(cache, EventType.REMOVED, key, /* hasOldValue= */ true,
+        /* oldValue= */ value, /* newValue= */ value, /* quiet= */ true);
   }
 
   /**
@@ -172,8 +173,8 @@ public final class EventDispatcher<K, V> {
    * @param value the entry's value
    */
   public void publishExpired(Cache<K, V> cache, K key, V value) {
-    publish(cache, EventType.EXPIRED, key, /* hasOldValue */ true,
-        /* oldValue */ value, /* newValue */ value, /* quiet */ false);
+    publish(cache, EventType.EXPIRED, key, /* hasOldValue= */ true,
+        /* oldValue= */ value, /* newValue= */ value, /* quiet= */ false);
   }
 
   /**
@@ -185,8 +186,8 @@ public final class EventDispatcher<K, V> {
    * @param value the entry's value
    */
   public void publishExpiredQuietly(Cache<K, V> cache, K key, V value) {
-    publish(cache, EventType.EXPIRED, key, /* hasOldValue */ true,
-        /* oldValue */ value, /* newValue */ value, /* quiet */ true);
+    publish(cache, EventType.EXPIRED, key, /* hasOldValue= */ true,
+        /* oldValue= */ value, /* newValue= */ value, /* quiet= */ true);
   }
 
   /**
@@ -194,7 +195,7 @@ public final class EventDispatcher<K, V> {
    * published.
    */
   public void awaitSynchronous() {
-    List<CompletableFuture<Void>> futures = pending.get();
+    var futures = pending.get();
     if (futures.isEmpty()) {
       return;
     }
@@ -223,7 +224,7 @@ public final class EventDispatcher<K, V> {
       return;
     }
 
-    JCacheEntryEvent<K, V> event = null;
+    @Var JCacheEntryEvent<K, V> event = null;
     for (var entry : dispatchQueues.entrySet()) {
       var registration = entry.getKey();
       if (!registration.getCacheEntryListener().isCompatible(eventType)) {

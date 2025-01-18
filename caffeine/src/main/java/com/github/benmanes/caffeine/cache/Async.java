@@ -21,13 +21,12 @@ import static java.util.Objects.requireNonNull;
 import java.io.Serializable;
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
-import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods and classes pertaining to asynchronous operations.
@@ -50,12 +49,12 @@ final class Async {
 
   /** Returns the current value or null if either not done or failed. */
   @SuppressWarnings("NullAway")
-  static @Nullable <V> V getIfReady(@Nullable CompletableFuture<V> future) {
+  static <V> @Nullable V getIfReady(@Nullable CompletableFuture<V> future) {
     return isReady(future) ? future.join() : null;
   }
 
   /** Returns the value when completed successfully or null if failed. */
-  static @Nullable <V> V getWhenSuccessful(@Nullable CompletableFuture<V> future) {
+  static <V> @Nullable V getWhenSuccessful(@Nullable CompletableFuture<V> future) {
     try {
       return (future == null) ? null : future.join();
     } catch (CancellationException | CompletionException e) {
@@ -135,7 +134,7 @@ final class Async {
    * {@code 0} to indicate that the entry should not be evicted due to a size constraint. If the
    * value is computed successfully then the entry must be reinserted so that the weight is updated
    * and the expiration timeouts reflect the value once present. This can be done safely using
-   * {@link Map#replace(Object, Object, Object)}.
+   * {@link java.util.Map#replace(Object, Object, Object)}.
    */
   static final class AsyncWeigher<K, V> implements Weigher<K, CompletableFuture<V>>, Serializable {
     private static final long serialVersionUID = 1L;

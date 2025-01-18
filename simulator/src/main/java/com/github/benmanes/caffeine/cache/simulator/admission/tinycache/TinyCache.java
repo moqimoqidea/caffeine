@@ -18,6 +18,7 @@ package com.github.benmanes.caffeine.cache.simulator.admission.tinycache;
 import java.util.Random;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.Var;
 
 /**
  * This is the TinyCache model that takes advantage of random eviction policy with a ghost cache as
@@ -52,19 +53,19 @@ public final class TinyCache {
     }
     indexing.getChain(hashFunc.fpaux, chainIndex, lastIndex);
     int offset = itemsPerSet * hashFunc.fpaux.set;
-    indexing.chainStart += offset;
-    indexing.chainEnd += offset;
+    indexing.setChainStart(indexing.getChainStart() + offset);
+    indexing.setChainEnd(indexing.getChainEnd() + offset);
 
     // Gil: I will carefully examine this function when I have time.
     // As far as I understand it is working right now.
-    while (indexing.chainStart <= indexing.chainEnd) {
+    while (indexing.getChainStart() <= indexing.getChainEnd()) {
       try {
-        if (cache[indexing.chainStart % cache.length] == hashFunc.fpaux.value) {
+        if (cache[indexing.getChainStart() % cache.length] == hashFunc.fpaux.value) {
           return true;
         }
-        indexing.chainStart++;
+        indexing.setChainStart(indexing.getChainStart() + 1);
       } catch (RuntimeException e) {
-        System.out.println("length: " + cache.length + " Access: " + indexing.chainStart);
+        System.out.println("length: " + cache.length + " Access: " + indexing.getChainStart());
       }
     }
     return false;
@@ -99,6 +100,7 @@ public final class TinyCache {
     return false;
   }
 
+  @SuppressWarnings("Varifier")
   private boolean selectVictim(int bucketStart) {
     byte victimOffset = (byte) rnd.nextInt(itemsPerSet);
     int victimChain = indexing.getChainAtOffset(
@@ -108,14 +110,13 @@ public final class TinyCache {
     if (indexing.chainExist(chainIndex[hashFunc.fpaux.set], victimChain)) {
       replace(hashFunc.fpaux, (byte) victimChain, bucketStart, victimOffset);
       return true;
-    } else {
-      throw new RuntimeException("Failed to replace");
     }
+    throw new IllegalStateException("Failed to replace");
   }
 
-  private void replaceItems(int idx, long value, int start, int delta) {
+  private void replaceItems(int idx, @Var long value, @Var int start, int delta) {
+    @Var long entry;
     start += idx;
-    long entry;
     do {
       entry = cache[start];
       cache[start] = value;

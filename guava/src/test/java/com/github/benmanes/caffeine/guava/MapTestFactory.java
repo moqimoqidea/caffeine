@@ -43,6 +43,7 @@ final class MapTestFactory {
    * @param generator the map generator
    * @return a suite of tests
    */
+  @SuppressWarnings("PMD.JUnit4SuitesShouldUseSuiteAnnotation")
   public static Test suite(String name, TestMapGenerator<?, ?> generator) {
     return ConcurrentMapTestSuiteBuilder
         .using(generator)
@@ -56,7 +57,7 @@ final class MapTestFactory {
   }
 
   /** Returns a map generator for synchronous values. */
-  public static TestStringMapGenerator synchronousGenerator(
+  public static TestStringMapGenerator generator(
       Supplier<Map<String, String>> supplier) {
     return new TestStringMapGenerator() {
       @Override protected Map<String, String> create(Map.Entry<String, String>[] entries) {

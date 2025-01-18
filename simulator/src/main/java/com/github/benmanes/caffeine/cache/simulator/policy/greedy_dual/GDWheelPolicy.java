@@ -17,6 +17,9 @@ package com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
+
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
@@ -24,6 +27,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
+import com.google.errorprone.annotations.Var;
 import com.typesafe.config.Config;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -41,6 +45,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
  * @author himelbrand@gmail.com (Omri Himelbrand)
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@SuppressWarnings("MemberName")
 @PolicySpec(name = "greedy-dual.GDWheel", characteristics = WEIGHTED)
 public final class GDWheelPolicy implements Policy {
   private final Long2ObjectMap<Node> data;
@@ -71,7 +76,7 @@ public final class GDWheelPolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
-    Node node = data.get(event.key());
+    @Var Node node = data.get(event.key());
     policyStats.recordOperation();
     if (node == null) {
       policyStats.recordWeightedMiss(event.weight());
@@ -99,7 +104,7 @@ public final class GDWheelPolicy implements Policy {
       int hand = findNextQueue();
       if (hand >= 0) {
         // Evict q at the tail of the C[1]th queue in level 1 Cost Wheel
-        var victim = wheel[0][hand].prev;
+        var victim = requireNonNull(wheel[0][hand].prev);
         policyStats.recordEviction();
         remove(victim);
       } else {
@@ -120,6 +125,7 @@ public final class GDWheelPolicy implements Policy {
     return -1;
   }
 
+  @SuppressWarnings("Varifier")
   private void migrate(int level) {
     // C[idx] ← (C[idx] + 1) mod NQ
     int hand = (clockHand[level] + 1) % wheel[level].length;
@@ -135,7 +141,7 @@ public final class GDWheelPolicy implements Policy {
       var sentinel = wheel[level][hand];
       if (!sentinel.isEmpty()) {
         // Remove p
-        var node = sentinel.next;
+        var node = requireNonNull(sentinel.next);
         node.remove();
 
         // Cost Remainder ← c(p) mod NQ^(idx-1)
@@ -161,11 +167,12 @@ public final class GDWheelPolicy implements Policy {
     node.remove();
   }
 
+  @SuppressWarnings("Varifier")
   private void add(AccessEvent event, Node node) {
     // W ← max { i | 0 < i ≤ NW and round(c(p) / NQ^(i-1)) > 0 }
-    int wheelHand = 0;
-    int wheelIndex = 0;
-    long relativeCost = 0;
+    @Var int wheelHand = 0;
+    @Var int wheelIndex = 0;
+    @Var long relativeCost = 0;
     for (int i = 0; i < wheel.length; i++) {
       long penalty = Math.round(event.missPenalty() / cost[i]);
       if (penalty > 0) {
@@ -193,12 +200,12 @@ public final class GDWheelPolicy implements Policy {
     checkState(data.size() <= maximumSize, "%s > %s", data.size(), maximumSize);
     checkState(size == expectedSize, "%s != %s", size, expectedSize);
 
-    int nodes = 0;
+    @Var int nodes = 0;
     for (var costWheel : wheel) {
       for (var sentinel : costWheel) {
-        Node next = sentinel.next;
+        @Var Node next = sentinel.next;
         while (next != sentinel) {
-          next = next.next;
+          next = requireNonNull(next).next;
           nodes++;
         }
       }
@@ -229,6 +236,7 @@ public final class GDWheelPolicy implements Policy {
 
     /** Appends the node to the head of the list. */
     public void appendToHead(Node node) {
+      requireNonNull(next);
       node.prev = this;
       node.next = next;
       next.prev = node;
@@ -250,8 +258,8 @@ public final class GDWheelPolicy implements Policy {
     double cost;
     int weight;
 
-    Node prev;
-    Node next;
+    @Nullable Node prev;
+    @Nullable Node next;
 
     public Node(long key) {
       this.key = key;
@@ -260,6 +268,8 @@ public final class GDWheelPolicy implements Policy {
     /** Removes the node from the list. */
     public void remove() {
       checkState(!(this instanceof Sentinel));
+      requireNonNull(prev);
+      requireNonNull(next);
       prev.next = next;
       next.prev = prev;
       prev = next = null;

@@ -15,8 +15,9 @@
  */
 package com.github.benmanes.caffeine.lincheck;
 
+import static org.jetbrains.kotlinx.lincheck.strategy.managed.ManagedCTestConfiguration.DEFAULT_HANGING_DETECTION_THRESHOLD;
+
 import java.util.Map;
-import java.util.concurrent.ForkJoinPool;
 
 import org.jetbrains.kotlinx.lincheck.LinChecker;
 import org.jetbrains.kotlinx.lincheck.annotations.Operation;
@@ -24,6 +25,7 @@ import org.jetbrains.kotlinx.lincheck.annotations.Param;
 import org.jetbrains.kotlinx.lincheck.paramgen.IntGen;
 import org.jetbrains.kotlinx.lincheck.strategy.managed.modelchecking.ModelCheckingOptions;
 import org.jetbrains.kotlinx.lincheck.strategy.stress.StressOptions;
+import org.jspecify.annotations.Nullable;
 import org.testng.annotations.Test;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -40,12 +42,12 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
  */
 @Param(name = "key", gen = IntGen.class, conf = "1:5")
 @Param(name = "value", gen = IntGen.class, conf = "1:10")
+@SuppressWarnings({"MemberName", "PMD.AbstractClassWithoutAbstractMethod"})
 public abstract class AbstractLincheckCacheTest {
   private final LoadingCache<Integer, Integer> cache;
 
   public AbstractLincheckCacheTest(Caffeine<Object, Object> builder) {
     cache = builder.executor(Runnable::run).build(key -> -key);
-    ForkJoinPool.commonPool(); // force eager initialization
   }
 
   /**
@@ -53,21 +55,14 @@ public abstract class AbstractLincheckCacheTest {
    * approach can also provide a trace of an incorrect execution. However, it uses sequential
    * consistency model, so it can not find any low-level bugs (e.g., missing 'volatile'), and thus,
    * it is recommended to have both test modes.
-   * <p>
-   * This test requires the following JVM arguments,
-   * <ul>
-   *   <li>--add-opens java.base/jdk.internal.vm=ALL-UNNAMED
-   *   <li>--add-opens java.base/jdk.internal.misc=ALL-UNNAMED
-   *   <li>--add-opens java.base/jdk.internal.access=ALL-UNNAMED
-   *   <li>--add-exports java.base/jdk.internal.util=ALL-UNNAMED
-   * </ul>
    */
   @Test(groups = "lincheck")
   public void modelCheckingTest() {
     var options = new ModelCheckingOptions()
-        .iterations(100)                 // the number of different scenarios
-        .invocationsPerIteration(1_000); // how deeply each scenario is tested
-    new LinChecker(getClass(), options).check();
+        .iterations(100)                // the number of different scenarios
+        .invocationsPerIteration(1_000) // how deeply each scenario is tested
+        .hangingDetectionThreshold(5 * DEFAULT_HANGING_DETECTION_THRESHOLD);
+    LinChecker.check(getClass(), options);
   }
 
   /** This test checks linearizability with stress testing. */
@@ -76,13 +71,13 @@ public abstract class AbstractLincheckCacheTest {
     var options = new StressOptions()
         .iterations(100)                  // the number of different scenarios
         .invocationsPerIteration(10_000); // how deeply each scenario is tested
-    new LinChecker(getClass(), options).check();
+    LinChecker.check(getClass(), options);
   }
 
   /* --------------- Cache --------------- */
 
   @Operation
-  public Integer getIfPresent(@Param(name = "key") int key) {
+  public @Nullable Integer getIfPresent(@Param(name = "key") int key) {
     return cache.getIfPresent(key);
   }
 
@@ -116,12 +111,7 @@ public abstract class AbstractLincheckCacheTest {
   }
 
   @Operation
-  public boolean containsValue(@Param(name = "value") int value) {
-    return cache.asMap().containsValue(value);
-  }
-
-  @Operation
-  public Integer get_asMap(@Param(name = "key") int key) {
+  public @Nullable Integer get_asMap(@Param(name = "key") int key) {
     return cache.asMap().get(key);
   }
 
@@ -171,7 +161,7 @@ public abstract class AbstractLincheckCacheTest {
 
   @Operation
   public Integer compute(@Param(name = "key") int key, @Param(name = "value") int nextValue) {
-    return cache.asMap().compute(key, (k, v) -> nextValue);
+    return cache.asMap().merge(key, nextValue, (oldValue, newValue) -> oldValue + newValue);
   }
 
   @Operation

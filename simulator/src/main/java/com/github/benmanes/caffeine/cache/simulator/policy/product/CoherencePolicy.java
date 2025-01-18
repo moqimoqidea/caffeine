@@ -19,6 +19,7 @@ import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Charact
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
@@ -27,6 +28,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.PolicySpec;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.CaseFormat;
+import com.google.errorprone.annotations.Var;
 import com.tangosol.net.cache.ConfigurableCacheMap.UnitCalculator;
 import com.tangosol.net.cache.LocalCache;
 import com.tangosol.util.MapEvent;
@@ -41,27 +43,28 @@ import com.typesafe.config.Config;
 @SuppressWarnings("deprecation")
 @PolicySpec(name = "product.Coherence", characteristics = WEIGHTED)
 public final class CoherencePolicy implements Policy {
+  private final Map<Long, AccessEvent> map;
   private final PolicyStats policyStats;
-  @SuppressWarnings("PMD.LooseCoupling")
-  private final LocalCache cache;
 
+  @SuppressWarnings("unchecked")
   public CoherencePolicy(CoherenceSettings settings, Eviction policy) {
     policyStats = new PolicyStats(name() + " (%s)", policy);
 
     // auto scale units to integer range (from LocalScheme)
-    int factor = 1;
-    long maximum = settings.maximumSize();
+    @Var int factor = 1;
+    @Var long maximum = settings.maximumSize();
     while (maximum >= Integer.MAX_VALUE) {
       maximum /= 1024;
       factor *= 1024;
     }
 
-    cache = new LocalCache();
+    var cache = new LocalCache();
     cache.setUnitFactor(factor);
     cache.setHighUnits((int) maximum);
     cache.setEvictionType(policy.type);
     cache.addMapListener(new CoherenceListener());
     cache.setUnitCalculator(new AccessEventCalculator());
+    map = cache;
   }
 
   /** Returns all variations of this policy based on the configuration parameters. */
@@ -74,14 +77,14 @@ public final class CoherencePolicy implements Policy {
 
   @Override
   public void record(AccessEvent event) {
-    var value = (AccessEvent) cache.get(event.key());
+    var value = map.get(event.key());
     if (value == null) {
-      cache.put(event.key(), event);
+      map.put(event.key(), event);
       policyStats.recordWeightedMiss(event.weight());
     } else {
       policyStats.recordWeightedHit(event.weight());
       if (event.weight() != value.weight()) {
-        cache.put(event.key(), event);
+        map.put(event.key(), event);
       }
     }
   }
@@ -108,7 +111,7 @@ public final class CoherencePolicy implements Policy {
     }
   }
 
-  static final class CoherenceSettings extends BasicSettings {
+  public static final class CoherenceSettings extends BasicSettings {
     public CoherenceSettings(Config config) {
       super(config);
     }
@@ -130,7 +133,7 @@ public final class CoherencePolicy implements Policy {
   }
 
   @SuppressWarnings("deprecation")
-  enum Eviction {
+  public enum Eviction {
     HYBRID(LocalCache.EVICTION_POLICY_HYBRID),
     LRU(LocalCache.EVICTION_POLICY_LRU),
     LFU(LocalCache.EVICTION_POLICY_LFU);

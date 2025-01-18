@@ -30,7 +30,7 @@ import com.typesafe.config.Config;
 public final class IndicatorResetCountMin4 implements Frequency {
   private final ClimberResetCountMin4 sketch;
 
-  Indicator indicator;
+  final Indicator indicator;
 
   public IndicatorResetCountMin4(Config config) {
     this.sketch = new ClimberResetCountMin4(config);
@@ -62,7 +62,7 @@ public final class IndicatorResetCountMin4 implements Frequency {
     return indicator.getIndicator();
   }
 
-  private int hintToStep(double ind) {
+  private static int hintToStep(double ind) {
     return (int) (ind * 30);
   }
 

@@ -16,12 +16,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 
+import org.jspecify.annotations.NullUnmarked;
+
 import junit.framework.Test;
 
 /**
  * Contains tests applicable to all Map implementations.
  */
-@SuppressWarnings({"rawtypes", "unchecked", "UnnecessaryParentheses"})
+@NullUnmarked
+@SuppressWarnings({"rawtypes", "unchecked", "UnnecessaryFinal", "UnnecessaryParentheses"})
 public class MapTest extends JSR166TestCase {
     final MapImplementation impl;
 
@@ -120,7 +123,7 @@ public class MapTest extends JSR166TestCase {
             final int i;
             Key(int i) { this.i = i; }
             @Override
-            public int hashCode() { return poorHash ? 0 : super.hashCode(); }
+            public int hashCode() { return poorHash ? 0 : System.identityHashCode(this); }
             @Override
             public int compareTo(Key x) {
                 return Integer.compare(this.i, x.i);

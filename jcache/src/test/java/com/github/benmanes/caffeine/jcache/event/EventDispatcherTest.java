@@ -16,7 +16,7 @@
 package com.github.benmanes.caffeine.jcache.event;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth8.assertThat;
+import static java.util.Objects.requireNonNull;
 import static javax.cache.event.EventType.CREATED;
 import static javax.cache.event.EventType.EXPIRED;
 import static javax.cache.event.EventType.REMOVED;
@@ -42,13 +42,12 @@ import javax.cache.event.CacheEntryCreatedListener;
 import javax.cache.event.CacheEntryEvent;
 import javax.cache.event.CacheEntryEventFilter;
 import javax.cache.event.CacheEntryExpiredListener;
+import javax.cache.event.CacheEntryListener;
 import javax.cache.event.CacheEntryRemovedListener;
 import javax.cache.event.CacheEntryUpdatedListener;
 
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.Mockito;
 import org.testng.annotations.AfterTest;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import com.google.common.collect.Iterables;
@@ -59,21 +58,8 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
  * @author ben.manes@gmail.com (Ben Manes)
  */
 public final class EventDispatcherTest {
-  @Mock Cache<Integer, Integer> cache;
-  @Mock CacheEntryCreatedListener<Integer, Integer> createdListener;
-  @Mock CacheEntryUpdatedListener<Integer, Integer> updatedListener;
-  @Mock CacheEntryRemovedListener<Integer, Integer> removedListener;
-  @Mock CacheEntryExpiredListener<Integer, Integer> expiredListener;
-
-  ExecutorService executorService = Executors.newCachedThreadPool(
+  final ExecutorService executorService = Executors.newCachedThreadPool(
       new ThreadFactoryBuilder().setDaemon(true).build());
-  CacheEntryEventFilter<Integer, Integer> allowFilter = event -> true;
-  CacheEntryEventFilter<Integer, Integer> rejectFilter = event -> false;
-
-  @BeforeMethod
-  public void beforeMethod() throws Exception {
-    MockitoAnnotations.openMocks(this).close();
-  }
 
   @AfterTest
   public void afterTest() {
@@ -82,8 +68,9 @@ public final class EventDispatcherTest {
 
   @Test
   public void register_noListener() {
-    var configuration =
-        new MutableCacheEntryListenerConfiguration<Integer, Integer>(null, null, false, false);
+    var configuration = new MutableCacheEntryListenerConfiguration<Integer, Integer>(
+        /* listenerFactory= */ null, /* filterFactory= */ null,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ false);
     var dispatcher = new EventDispatcher<Integer, Integer>(Runnable::run);
     dispatcher.register(configuration);
     assertThat(dispatcher.dispatchQueues).isEmpty();
@@ -91,9 +78,11 @@ public final class EventDispatcherTest {
 
   @Test
   public void register_twice() {
+    CacheEntryCreatedListener<Integer, Integer> createdListener = Mockito.mock();
     var dispatcher = new EventDispatcher<Integer, Integer>(Runnable::run);
     var configuration = new MutableCacheEntryListenerConfiguration<>(
-        () -> createdListener, null, false, false);
+        () -> createdListener, /* filterFactory= */ null,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ false);
     dispatcher.register(configuration);
     dispatcher.register(configuration);
     assertThat(dispatcher.dispatchQueues).hasSize(1);
@@ -101,12 +90,17 @@ public final class EventDispatcherTest {
 
   @Test
   public void register_equality() {
+    CacheEntryCreatedListener<Integer, Integer> createdListener = Mockito.mock();
+    CacheEntryUpdatedListener<Integer, Integer> updatedListener = Mockito.mock();
     var c1 = new MutableCacheEntryListenerConfiguration<>(
-        () -> createdListener, null, false, false);
+        () -> createdListener, /* filterFactory= */ null,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ false);
     var c2 = new MutableCacheEntryListenerConfiguration<>(
-        c1.getCacheEntryListenerFactory(), null, false, false);
+        c1.getCacheEntryListenerFactory(), /* filterFactory= */ null,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ false);
     var c3 = new MutableCacheEntryListenerConfiguration<>(
-        c1.getCacheEntryListenerFactory(), null, true, true);
+        c1.getCacheEntryListenerFactory(), /* filterFactory= */ null,
+        /* isOldValueRequired= */ true, /* isSynchronous= */ true);
 
     new EqualsTester()
         .addEqualityGroup(
@@ -121,9 +115,11 @@ public final class EventDispatcherTest {
 
   @Test
   public void deregister() {
+    CacheEntryCreatedListener<Integer, Integer> createdListener = Mockito.mock();
     var dispatcher = new EventDispatcher<Integer, Integer>(Runnable::run);
     var configuration = new MutableCacheEntryListenerConfiguration<>(
-        () -> createdListener, null, false, false);
+        () -> createdListener, /* filterFactory= */ null,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ false);
     dispatcher.register(configuration);
     dispatcher.deregister(configuration);
     assertThat(dispatcher.dispatchQueues).isEmpty();
@@ -131,10 +127,12 @@ public final class EventDispatcherTest {
 
   @Test
   public void publishCreated() {
+    CacheEntryCreatedListener<Integer, Integer> createdListener = Mockito.mock();
     var dispatcher = new EventDispatcher<Integer, Integer>(Runnable::run);
-    registerAll(dispatcher);
-
-    dispatcher.publishCreated(cache, 1, 2);
+    try (Cache<Integer, Integer> cache = Mockito.mock()) {
+      registerAll(dispatcher, List.of(createdListener));
+      dispatcher.publishCreated(cache, 1, 2);
+    }
     verify(createdListener, times(4)).onCreated(any());
     assertThat(dispatcher.pending.get()).hasSize(2);
     assertThat(dispatcher.dispatchQueues.values().stream()
@@ -143,10 +141,13 @@ public final class EventDispatcherTest {
 
   @Test
   public void publishUpdated() {
+    CacheEntryUpdatedListener<Integer, Integer> updatedListener = Mockito.mock();
     var dispatcher = new EventDispatcher<Integer, Integer>(Runnable::run);
-    registerAll(dispatcher);
+    try (Cache<Integer, Integer> cache = Mockito.mock()) {
+      registerAll(dispatcher, List.of(updatedListener));
+      dispatcher.publishUpdated(cache, 1, 2, 3);
+    }
 
-    dispatcher.publishUpdated(cache, 1, 2, 3);
     verify(updatedListener, times(4)).onUpdated(any());
     assertThat(dispatcher.pending.get()).hasSize(2);
     assertThat(dispatcher.dispatchQueues.values().stream()
@@ -155,10 +156,13 @@ public final class EventDispatcherTest {
 
   @Test
   public void publishRemoved() {
+    CacheEntryRemovedListener<Integer, Integer> removedListener = Mockito.mock();
     var dispatcher = new EventDispatcher<Integer, Integer>(Runnable::run);
-    registerAll(dispatcher);
+    try (Cache<Integer, Integer> cache = Mockito.mock()) {
+      registerAll(dispatcher, List.of(removedListener));
+      dispatcher.publishRemoved(cache, 1, 2);
+    }
 
-    dispatcher.publishRemoved(cache, 1, 2);
     verify(removedListener, times(4)).onRemoved(any());
     assertThat(dispatcher.pending.get()).hasSize(2);
     assertThat(dispatcher.dispatchQueues.values().stream()
@@ -167,10 +171,13 @@ public final class EventDispatcherTest {
 
   @Test
   public void publishExpired() {
+    CacheEntryExpiredListener<Integer, Integer> expiredListener = Mockito.mock();
     var dispatcher = new EventDispatcher<Integer, Integer>(Runnable::run);
-    registerAll(dispatcher);
+    try (Cache<Integer, Integer> cache = Mockito.mock()) {
+      registerAll(dispatcher, List.of(expiredListener));
+      dispatcher.publishExpired(cache, 1, 2);
+    }
 
-    dispatcher.publishExpired(cache, 1, 2);
     verify(expiredListener, times(4)).onExpired(any());
     assertThat(dispatcher.pending.get()).hasSize(2);
     assertThat(dispatcher.dispatchQueues.values().stream()
@@ -182,46 +189,49 @@ public final class EventDispatcherTest {
     var start = new AtomicBoolean();
     var next = new AtomicBoolean();
     var running = new AtomicBoolean();
-    Executor executor = task -> executorService.execute(() -> {
-      running.set(true);
-      if (!start.get()) {
-        await().untilTrue(start);
-      } else if (!next.get()) {
-        await().untilTrue(next);
-      }
-      task.run();
-    });
-    var listener = new ConsumingCacheListener();
-    var dispatcher = new EventDispatcher<Integer, Integer>(executor);
-    dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
-        () -> listener, null, false, false));
+    try (Cache<Integer, Integer> cache = Mockito.mock()) {
+      Executor executor = task -> executorService.execute(() -> {
+        running.set(true);
+        if (!start.get()) {
+          await().untilTrue(start);
+        } else if (!next.get()) {
+          await().untilTrue(next);
+        }
+        task.run();
+      });
+      var listener = new ConsumingCacheListener();
+      var dispatcher = new EventDispatcher<Integer, Integer>(executor);
+      dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
+          () -> listener, /* filterFactory= */ null,
+          /* isOldValueRequired= */ false, /* isSynchronous= */ false));
 
-    dispatcher.publishCreated(cache, 1, 2);
-    dispatcher.publishUpdated(cache, 1, 2, 3);
-    dispatcher.publishUpdated(cache, 1, 3, 4);
-    dispatcher.publishRemoved(cache, 1, 5);
-    dispatcher.publishExpired(cache, 1, 6);
+      dispatcher.publishCreated(cache, 1, 2);
+      dispatcher.publishUpdated(cache, 1, 2, 3);
+      dispatcher.publishUpdated(cache, 1, 3, 4);
+      dispatcher.publishRemoved(cache, 1, 5);
+      dispatcher.publishExpired(cache, 1, 6);
 
-    await().untilTrue(running);
-    start.set(true);
+      await().untilTrue(running);
+      start.set(true);
 
-    await().untilAsserted(() -> assertThat(listener.queue).hasSize(1));
-    assertThat(dispatcher.dispatchQueues.values().stream()
-        .flatMap(queue -> queue.entrySet().stream())).isNotEmpty();
+      await().untilAsserted(() -> assertThat(listener.queue).hasSize(1));
+      assertThat(dispatcher.dispatchQueues.values().stream()
+          .flatMap(queue -> queue.entrySet().stream())).isNotEmpty();
 
-    next.set(true);
-    await().untilAsserted(() -> assertThat(dispatcher.dispatchQueues.values().stream()
-        .flatMap(queue -> queue.entrySet().stream())).isEmpty());
+      next.set(true);
+      await().untilAsserted(() -> assertThat(dispatcher.dispatchQueues.values().stream()
+          .flatMap(queue -> queue.entrySet().stream())).isEmpty());
 
-    assertThat(listener.queue).hasSize(5);
-    assertThat(listener.queue.stream().map(CacheEntryEvent::getKey))
-        .containsExactly(1, 1, 1, 1, 1);
-    assertThat(listener.queue.stream().map(CacheEntryEvent::getValue))
-        .containsExactly(2, 3, 4, 5, 6).inOrder();
-    assertThat(listener.queue.stream().map(CacheEntryEvent::getOldValue))
-        .containsExactly(null, 2, 3, 5, 6).inOrder();
-    assertThat(listener.queue.stream().map(CacheEntryEvent::getEventType))
-        .containsExactly(CREATED, UPDATED, UPDATED, REMOVED, EXPIRED).inOrder();
+      assertThat(listener.queue).hasSize(5);
+      assertThat(listener.queue.stream().map(CacheEntryEvent::getKey))
+          .containsExactly(1, 1, 1, 1, 1);
+      assertThat(listener.queue.stream().map(CacheEntryEvent::getValue))
+          .containsExactly(2, 3, 4, 5, 6).inOrder();
+      assertThat(listener.queue.stream().map(CacheEntryEvent::getOldValue))
+          .containsExactly(null, 2, 3, 5, 6).inOrder();
+      assertThat(listener.queue.stream().map(CacheEntryEvent::getEventType))
+          .containsExactly(CREATED, UPDATED, UPDATED, REMOVED, EXPIRED).inOrder();
+    }
   }
 
   @Test(invocationCount = 25)
@@ -233,41 +243,44 @@ public final class EventDispatcherTest {
     var run2 = new AtomicBoolean();
     var done1 = new AtomicBoolean();
     var done2 = new AtomicBoolean();
+    try (Cache<Integer, Integer> cache = Mockito.mock()) {
+      Executor executor = task -> executorService.execute(() -> {
+        await().untilTrue(execute);
+        task.run();
+      });
+      CacheEntryCreatedListener<Integer, Integer> listener = events -> {
+        var event = requireNonNull(Iterables.getOnlyElement(events));
+        if (event.getKey().equals(1)) {
+          received1.set(true);
+          await().untilTrue(run1);
+          done1.set(true);
+        } else if (event.getKey().equals(2)) {
+          received2.set(true);
+          await().untilTrue(run2);
+          done2.set(true);
+        }
+      };
 
-    Executor executor = task -> executorService.execute(() -> {
-      await().untilTrue(execute);
-      task.run();
-    });
-    CacheEntryCreatedListener<Integer, Integer> listener = events -> {
-      var event = Iterables.getOnlyElement(events);
-      if (event.getKey().equals(1)) {
-        received1.set(true);
-        await().untilTrue(run1);
-        done1.set(true);
-      } else if (event.getKey().equals(2)) {
-        received2.set(true);
-        await().untilTrue(run2);
-        done2.set(true);
-      }
-    };
+      var dispatcher = new EventDispatcher<Integer, Integer>(executor);
+      dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
+          () -> listener, /* filterFactory= */ null,
+          /* isOldValueRequired= */ false, /* isSynchronous= */ false));
 
-    var dispatcher = new EventDispatcher<Integer, Integer>(executor);
-    dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
-        () -> listener, null, false, false));
-    dispatcher.publishCreated(cache, 1, 1);
-    dispatcher.publishCreated(cache, 2, 2);
-    execute.set(true);
+      dispatcher.publishCreated(cache, 1, 1);
+      dispatcher.publishCreated(cache, 2, 2);
+      execute.set(true);
 
-    await().untilTrue(received1);
-    await().untilTrue(received2);
+      await().untilTrue(received1);
+      await().untilTrue(received2);
 
-    run1.set(true);
-    await().untilTrue(done1);
+      run1.set(true);
+      await().untilTrue(done1);
 
-    run2.set(true);
-    await().untilTrue(done2);
-    await().untilAsserted(() -> assertThat(dispatcher.dispatchQueues.values().stream()
-        .flatMap(queue -> queue.entrySet().stream())).isEmpty());
+      run2.set(true);
+      await().untilTrue(done2);
+      await().untilAsserted(() -> assertThat(dispatcher.dispatchQueues.values().stream()
+          .flatMap(queue -> queue.entrySet().stream())).isEmpty());
+    }
   }
 
   @Test(invocationCount = 25)
@@ -275,32 +288,35 @@ public final class EventDispatcherTest {
     var execute = new AtomicBoolean();
     var run = new AtomicBoolean();
     var done = new AtomicBoolean();
+    try (Cache<Integer, Integer> cache = Mockito.mock()) {
+      Executor executor = task -> executorService.execute(() -> {
+        await().untilTrue(execute);
+        task.run();
+      });
+      var consumer = new ConsumingCacheListener();
+      CacheEntryCreatedListener<Integer, Integer> waiter = events -> {
+        await().untilTrue(run);
+        done.set(true);
+      };
 
-    Executor executor = task -> executorService.execute(() -> {
-      await().untilTrue(execute);
-      task.run();
-    });
-    var consumer = new ConsumingCacheListener();
-    CacheEntryCreatedListener<Integer, Integer> waiter = events -> {
-      await().untilTrue(run);
-      done.set(true);
-    };
+      var dispatcher = new EventDispatcher<Integer, Integer>(executor);
+      dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
+          () -> consumer, /* filterFactory= */ null,
+          /* isOldValueRequired= */ false, /* isSynchronous= */ false));
+      dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
+          () -> waiter, /* filterFactory= */ null,
+          /* isOldValueRequired= */ false, /* isSynchronous= */ false));
 
-    var dispatcher = new EventDispatcher<Integer, Integer>(executor);
-    dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
-        () -> consumer, null, false, false));
-    dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
-        () -> waiter, null, false, false));
+      dispatcher.publishCreated(cache, 1, 2);
+      execute.set(true);
 
-    dispatcher.publishCreated(cache, 1, 2);
-    execute.set(true);
+      await().untilAsserted(() -> assertThat(consumer.queue).hasSize(1));
+      run.set(true);
 
-    await().untilAsserted(() -> assertThat(consumer.queue).hasSize(1));
-    run.set(true);
-
-    await().untilTrue(done);
-    await().untilAsserted(() -> assertThat(dispatcher.dispatchQueues.values().stream()
-        .flatMap(queue -> queue.entrySet().stream())).isEmpty());
+      await().untilTrue(done);
+      await().untilAsserted(() -> assertThat(dispatcher.dispatchQueues.values().stream()
+          .flatMap(queue -> queue.entrySet().stream())).isEmpty());
+    }
   }
 
   @Test
@@ -332,7 +348,8 @@ public final class EventDispatcherTest {
         pendingFutures.addAll(secondary.pending.get());
 
     var configuration = new MutableCacheEntryListenerConfiguration<>(
-        () -> listener, null, /* isOldValueRequired */ false, /* isSynchronous */ true);
+        () -> listener, /* filterFactory= */ null,
+        /* isOldValueRequired= */ false, /* isSynchronous= */ false);
     primary.register(configuration);
     int key = 1;
 
@@ -340,9 +357,10 @@ public final class EventDispatcherTest {
     var queue = new CompletableFuture<Void>();
     dispatchQueue.put(key, queue);
 
-    primary.publishCreated(cache, key, -key);
-    queue.complete(null);
-
+    try (Cache<Integer, Integer> cache = Mockito.mock()) {
+      primary.publishCreated(cache, key, -key);
+      queue.complete(null);
+    }
     assertThat(pendingFutures).isEmpty();
   }
 
@@ -356,14 +374,17 @@ public final class EventDispatcherTest {
   }
 
   /**
-   * Registers (4 listeners) * (2 synchronous modes) * (3 filter modes) = 24 configurations. For
+   * Registers (listeners) * (2 synchronous modes) * (3 filter modes) configurations. For
    * simplicity, an event is published and ignored if the listener is of the wrong type. For a
    * single event, it should be consumed by (2 filter) * (2 synchronous) = 4 listeners where only
    * 2 are synchronous.
    */
-  private void registerAll(EventDispatcher<Integer, Integer> dispatcher) {
+  private static void registerAll(EventDispatcher<Integer, Integer> dispatcher,
+      List<CacheEntryListener<Integer, Integer>> listeners) {
+    CacheEntryEventFilter<Integer, Integer> rejectFilter = event -> false;
+    CacheEntryEventFilter<Integer, Integer> allowFilter = event -> true;
+
     var isOldValueRequired = false;
-    var listeners = List.of(createdListener, updatedListener, removedListener, expiredListener);
     for (var listener : listeners) {
       for (boolean synchronous : List.of(true, false)) {
         dispatcher.register(new MutableCacheEntryListenerConfiguration<>(
@@ -379,7 +400,7 @@ public final class EventDispatcherTest {
   private static final class ConsumingCacheListener implements
       CacheEntryCreatedListener<Integer, Integer>,  CacheEntryUpdatedListener<Integer, Integer>,
       CacheEntryRemovedListener<Integer, Integer>, CacheEntryExpiredListener<Integer, Integer> {
-    Queue<CacheEntryEvent<?, ?>> queue = new ConcurrentLinkedQueue<>();
+    final Queue<CacheEntryEvent<?, ?>> queue = new ConcurrentLinkedQueue<>();
 
     @Override
     public void onCreated(Iterable<CacheEntryEvent<? extends Integer, ? extends Integer>> events) {

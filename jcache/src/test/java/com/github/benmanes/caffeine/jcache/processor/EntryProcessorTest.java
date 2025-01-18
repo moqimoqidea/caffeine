@@ -18,6 +18,7 @@ package com.github.benmanes.caffeine.jcache.processor;
 import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.truth.Truth.assertThat;
+import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
 import static javax.cache.expiry.Duration.FIVE_MINUTES;
 
@@ -30,10 +31,10 @@ import java.util.OptionalLong;
 import javax.cache.Cache;
 import javax.cache.expiry.CreatedExpiryPolicy;
 import javax.cache.integration.CacheLoader;
-import javax.cache.integration.CacheLoaderException;
 import javax.cache.integration.CacheWriter;
 import javax.cache.processor.MutableEntry;
 
+import org.jspecify.annotations.Nullable;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -74,24 +75,24 @@ public final class EntryProcessorTest extends AbstractJCacheTest {
 
   @Test
   public void reload() {
-    var value1 = jcache.invoke(KEY_1, this::process);
+    var value1 = jcache.invoke(KEY_1, (entry, arguments) -> process(entry));
     assertThat(loads).isEqualTo(1);
     assertThat(value1).isNull();
 
     ticker.advance(Duration.ofMinutes(1));
-    var value2 = jcache.invoke(KEY_1, this::process);
+    var value2 = jcache.invoke(KEY_1, (entry, arguments) -> process(entry));
     assertThat(loads).isEqualTo(1);
     assertThat(value2).isNull();
 
     // Expire the entry
     ticker.advance(Duration.ofMinutes(5));
 
-    var value3 = jcache.invoke(KEY_1, this::process);
+    var value3 = jcache.invoke(KEY_1, (entry, arguments) -> process(entry));
     assertThat(loads).isEqualTo(2);
     assertThat(value3).isNull();
 
     ticker.advance(Duration.ofMinutes(1));
-    var value4 = jcache.invoke(KEY_1, this::process);
+    var value4 = jcache.invoke(KEY_1, (entry, arguments) -> process(entry));
     assertThat(loads).isEqualTo(2);
     assertThat(value4).isNull();
   }
@@ -99,15 +100,15 @@ public final class EntryProcessorTest extends AbstractJCacheTest {
   @Test
   public void writeOccursForInitialLoadOfEntry() {
     map.put(KEY_1, 100);
-    var value = jcache.invoke(KEY_1, this::process);
+    var value = jcache.invoke(KEY_1, (entry, arguments) -> process(entry));
     assertThat(writes).isEqualTo(1);
     assertThat(loads).isEqualTo(1);
     assertThat(value).isNull();
   }
 
-  private Object process(MutableEntry<Integer, Integer> entry, Object... arguments) {
-    Integer value = firstNonNull(entry.getValue(), 0);
-    entry.setValue(++value);
+  private static @Nullable Object process(MutableEntry<Integer, Integer> entry) {
+    var value = 1 + firstNonNull(entry.getValue(), 0);
+    entry.setValue(value);
     return null;
   }
 
@@ -136,16 +137,13 @@ public final class EntryProcessorTest extends AbstractJCacheTest {
   }
 
   final class MapLoader implements CacheLoader<Integer, Integer> {
-
-    @Override
-    public Integer load(Integer key) throws CacheLoaderException {
+    @Override public @Nullable Integer load(Integer key) {
       loads++;
       return map.get(key);
     }
-
-    @Override
-    public ImmutableMap<Integer, Integer> loadAll(Iterable<? extends Integer> keys) {
-      return Streams.stream(keys).collect(toImmutableMap(identity(), this::load));
+    @Override public ImmutableMap<Integer, Integer> loadAll(Iterable<? extends Integer> keys) {
+      return Streams.stream(keys).collect(
+          toImmutableMap(identity(), key -> requireNonNull(load(key))));
     }
   }
 }

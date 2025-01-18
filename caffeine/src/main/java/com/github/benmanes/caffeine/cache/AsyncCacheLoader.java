@@ -24,6 +24,10 @@ import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 /**
  * Computes or retrieves values asynchronously based on a key, for use in populating a
  * {@link AsyncLoadingCache}.
@@ -38,11 +42,14 @@ import java.util.function.Function;
  *   AsyncLoadingCache<Key, Graph> cache = Caffeine.newBuilder().buildAsync(loader);
  * }</pre>
  *
+ * @param <K> the type of keys
+ * @param <V> the type of values
  * @author ben.manes@gmail.com (Ben Manes)
  */
+@NullMarked
 @FunctionalInterface
 @SuppressWarnings("PMD.SignatureDeclareThrowsException")
-public interface AsyncCacheLoader<K, V> {
+public interface AsyncCacheLoader<K, V extends @Nullable Object> {
 
   /**
    * Asynchronously computes or retrieves the value corresponding to {@code key}.
@@ -83,7 +90,7 @@ public interface AsyncCacheLoader<K, V> {
    *         treated like any other {@code Exception} in all respects except that, when it is
    *         caught, the thread's interrupt status is set
    */
-  default CompletableFuture<? extends Map<? extends K, ? extends V>> asyncLoadAll(
+  default CompletableFuture<? extends Map<? extends K, ? extends @NonNull V>> asyncLoadAll(
       Set<? extends K> keys, Executor executor) throws Exception {
     throw new UnsupportedOperationException();
   }
@@ -110,7 +117,7 @@ public interface AsyncCacheLoader<K, V> {
    *         caught, the thread's interrupt status is set
    */
   default CompletableFuture<? extends V> asyncReload(
-      K key, V oldValue, Executor executor) throws Exception {
+      K key, @NonNull V oldValue, Executor executor) throws Exception {
     return asyncLoad(key, executor);
   }
 
@@ -132,8 +139,9 @@ public interface AsyncCacheLoader<K, V> {
    * @return an asynchronous cache loader that delegates to the supplied {@code mappingFunction}
    * @throws NullPointerException if the mappingFunction is null
    */
-  static <K, V> AsyncCacheLoader<K, V> bulk(Function<? super Set<? extends K>,
-      ? extends Map<? extends K, ? extends V>> mappingFunction) {
+  static <K, V extends @Nullable Object> AsyncCacheLoader<K, V> bulk(
+      Function<? super Set<? extends K>, ? extends Map<? extends K, ? extends @NonNull V>>
+          mappingFunction) {
     return CacheLoader.bulk(mappingFunction);
   }
 
@@ -155,8 +163,12 @@ public interface AsyncCacheLoader<K, V> {
    * @return an asynchronous cache loader that delegates to the supplied {@code mappingFunction}
    * @throws NullPointerException if the mappingFunction is null
    */
-  static <K, V> AsyncCacheLoader<K, V> bulk(BiFunction<? super Set<? extends K>, ? super Executor,
-      ? extends CompletableFuture<? extends Map<? extends K, ? extends V>>> mappingFunction) {
+  static <K, V extends @Nullable Object> AsyncCacheLoader<K, V> bulk(
+      BiFunction<
+          ? super Set<? extends K>,
+          ? super Executor,
+          ? extends CompletableFuture<? extends Map<? extends K, ? extends @NonNull V>>>
+      mappingFunction) {
     requireNonNull(mappingFunction);
     return new AsyncCacheLoader<>() {
       @Override public CompletableFuture<V> asyncLoad(K key, Executor executor) {

@@ -16,6 +16,9 @@
 package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
+
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
@@ -72,7 +75,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
   private int p;
 
   public ArcPolicy(Config config) {
-    BasicSettings settings = new BasicSettings(config);
+    var settings = new BasicSettings(config);
     this.maximumSize = Math.toIntExact(settings.maximumSize());
     this.policyStats = new PolicyStats(name());
     this.data = new Long2ObjectOpenHashMap<>();
@@ -152,28 +155,28 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     //   REPLACE(p) .
     // Put x at the top of T1 and place it in the cache.
 
-    Node node = new Node(key);
+    var node = new Node(key);
     node.type = QueueType.T1;
 
     int sizeL1 = (sizeT1 + sizeB1);
     int sizeL2 = (sizeT2 + sizeB2);
     if (sizeL1 == maximumSize) {
       if (sizeT1 < maximumSize) {
-        Node victim = headB1.next;
+        Node victim = requireNonNull(headB1.next);
         data.remove(victim.key);
         victim.remove();
         sizeB1--;
 
         evict(node);
       } else {
-        Node victim = headT1.next;
+        Node victim = requireNonNull(headT1.next);
         data.remove(victim.key);
         victim.remove();
         sizeT1--;
       }
     } else if ((sizeL1 < maximumSize) && ((sizeL1 + sizeL2) >= maximumSize)) {
       if ((sizeL1 + sizeL2) >= (2 * maximumSize)) {
-        Node victim = headB2.next;
+        Node victim = requireNonNull(headB2.next);
         data.remove(victim.key);
         victim.remove();
         sizeB2--;
@@ -195,14 +198,14 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     // else move the LRU page in T2 to the top of B2 and remove it from the cache.
 
     if ((sizeT1 >= 1) && (((candidate.type == QueueType.B2) && (sizeT1 == p)) || (sizeT1 > p))) {
-      Node victim = headT1.next;
+      Node victim = requireNonNull(headT1.next);
       victim.remove();
       victim.type = QueueType.B1;
       victim.appendToTail(headB1);
       sizeT1--;
       sizeB1++;
     } else {
-      Node victim = headT2.next;
+      Node victim = requireNonNull(headT2.next);
       victim.remove();
       victim.type = QueueType.B2;
       victim.appendToTail(headB2);
@@ -237,9 +240,9 @@ public final class ArcPolicy implements KeyOnlyPolicy {
   static final class Node {
     final long key;
 
-    Node prev;
-    Node next;
-    QueueType type;
+    @Nullable Node prev;
+    @Nullable Node next;
+    @Nullable QueueType type;
 
     Node() {
       this.key = Long.MIN_VALUE;
@@ -253,7 +256,7 @@ public final class ArcPolicy implements KeyOnlyPolicy {
 
     /** Appends the node to the tail of the list. */
     public void appendToTail(Node head) {
-      Node tail = head.prev;
+      Node tail = requireNonNull(head.prev);
       head.prev = this;
       tail.next = this;
       next = head;
@@ -262,6 +265,9 @@ public final class ArcPolicy implements KeyOnlyPolicy {
 
     /** Removes the node from the list. */
     public void remove() {
+      requireNonNull(prev);
+      requireNonNull(next);
+
       prev.next = next;
       next.prev = prev;
       prev = next = null;

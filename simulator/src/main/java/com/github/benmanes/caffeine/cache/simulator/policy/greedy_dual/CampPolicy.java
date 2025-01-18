@@ -17,10 +17,13 @@ package com.github.benmanes.caffeine.cache.simulator.policy.greedy_dual;
 
 import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
 
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.TreeSet;
+
+import org.jspecify.annotations.Nullable;
 
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
@@ -101,6 +104,7 @@ public final class CampPolicy implements Policy {
     }
   }
 
+  @SuppressWarnings("Varifier")
   private int roundedCost(AccessEvent event) {
     // Given a number x, let b be the order of its highest non-zero bit. To round x to precision p,
     // zero out the b − p lower order bits or, in other words, preserve only the p most significant
@@ -136,15 +140,14 @@ public final class CampPolicy implements Policy {
     int priority = priorityQueue.isEmpty()
         ? roundCost
         : priorityQueue.first().priority + roundCost;
-    var sentinel = sentinelMapping.get(roundCost);
-    if (sentinel == null) {
-      // checks if new LRU list needs to be created for the rounded cost
-      sentinel = new Sentinel(roundCost);
-      sentinel.priority = priority;
-      sentinel.lastRequest = requestCount;
-      sentinelMapping.put(roundCost, sentinel);
-      priorityQueue.add(sentinelMapping.get(roundCost));
-    }
+    var sentinel = sentinelMapping.computeIfAbsent(roundCost, cost -> {
+      // Add a new LRU list for the rounded cost
+      var head = new Sentinel(roundCost);
+      head.lastRequest = requestCount;
+      head.priority = priority;
+      priorityQueue.add(head);
+      return head;
+    });
 
     // cost of entry might be used later to find sentinel in case of hit
     var node = new Node(event.key(), event.weight(), sentinel);
@@ -155,7 +158,7 @@ public final class CampPolicy implements Policy {
 
   private void evict() {
     var sentinel = priorityQueue.first();
-    var victim = sentinel.next;
+    var victim = requireNonNull(sentinel.next);
     data.remove(victim.key);
     size -= victim.weight;
     victim.remove();
@@ -200,7 +203,7 @@ public final class CampPolicy implements Policy {
 
     /** Appends the node to the tail of the list. */
     public void appendToTail(Node node) {
-      var tail = prev;
+      var tail = requireNonNull(prev);
       prev = node;
       tail.next = node;
       node.next = this;
@@ -216,7 +219,7 @@ public final class CampPolicy implements Policy {
     }
 
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(@Nullable Object o) {
       if (this == o) {
         return true;
       } else if (!(o instanceof Sentinel)) {
@@ -243,9 +246,9 @@ public final class CampPolicy implements Policy {
   private static class Node {
     final long key;
 
-    Sentinel sentinel;
-    Node prev;
-    Node next;
+    @Nullable Sentinel sentinel;
+    @Nullable Node prev;
+    @Nullable Node next;
 
     int weight;
     int cost;
@@ -263,6 +266,9 @@ public final class CampPolicy implements Policy {
     /** Removes the node from the list. */
     public void remove() {
       checkState(!(this instanceof Sentinel));
+      requireNonNull(prev);
+      requireNonNull(next);
+
       prev.next = next;
       next.prev = prev;
       prev = next = null;
@@ -270,13 +276,16 @@ public final class CampPolicy implements Policy {
 
     /** Moves the node to the tail. */
     public void moveToTail() {
+      requireNonNull(prev);
+      requireNonNull(next);
+
       // unlink
       prev.next = next;
       next.prev = prev;
 
       // link
-      next = sentinel;
-      prev = sentinel.prev;
+      next = requireNonNull(sentinel);
+      prev = requireNonNull(sentinel.prev);
       sentinel.prev = this;
       prev.next = this;
     }

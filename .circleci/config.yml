@@ -4,7 +4,7 @@ version: 2.1
 parameters:
   java_version:
     type: integer
-    default: 17
+    default: 21
 
 commands:
   setup_java:
@@ -161,6 +161,9 @@ workflows:
                 - caffeine:strongKeysAndSoftValuesSyncCaffeineTest
                 - caffeine:weakKeysAndWeakValuesSyncCaffeineTest
                 - caffeine:weakKeysAndSoftValuesSyncCaffeineTest
+                - caffeine:junitJupiterTest
+                - caffeine:standaloneTest
                 - caffeine:lincheckTest
                 - caffeine:isolatedTest
                 - caffeine:junitTest
+                - simulator:run

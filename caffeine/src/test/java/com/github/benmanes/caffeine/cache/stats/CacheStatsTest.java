@@ -16,7 +16,7 @@
 package com.github.benmanes.caffeine.cache.stats;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -104,6 +104,7 @@ public final class CacheStatsTest {
     assertThat(CacheStats.empty().minus(max)).isEqualTo(CacheStats.empty());
   }
 
+  @SuppressWarnings("PMD.ExcessiveParameterList")
   private static void checkStats(CacheStats stats, long requestCount, long hitCount,
       double hitRate, long missCount, double missRate, long loadSuccessCount,
       long loadFailureCount, double loadFailureRate, long loadCount, long totalLoadTime,
